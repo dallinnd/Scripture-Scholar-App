@@ -22,16 +22,25 @@ const BOOKS_CONFIG = [
     }
 ];
 
+const ABBREVIATIONS = {
+    "d&c": "Doctrine and Covenants",
+    "1 ne": "1 Nephi",
+    "2 ne": "2 Nephi",
+    "3 ne": "3 Nephi",
+    "4 ne": "4 Nephi",
+    "a of f": "Articles of Faith",
+    "js-h": "Joseph Smith—History",
+    "js-m": "Joseph Smith—Matthew",
+    "w of m": "Words of Mormon"
+};
+
 // Global State
 let allVerses = [];
 let uniqueWords = [];
 let chapterList = [];
 let activeCategories = new Set(BOOKS_CONFIG.map(b => b.id)); 
-let legalTextContent = "Standard Works data is sourced from the 'LDS Documentation Project - The Scriptures' found at https://scriptures.nephi.org/ and was previously downloaded for your convenience and security.";
-let searchRefEnabled = true;
-let searchTextEnabled = true;
+let allBookNames = []; // Flattened list for ghost text
 
-// Navigation & View State
 let currentSearchResults = [];
 let currentResultIndex = -1; 
 let currentChapterIndex = -1; 
@@ -39,18 +48,19 @@ let viewMode = 'verse';
 let renderedCount = 0;
 const BATCH_SIZE = 50;
 
-// Saved Scriptures State
 let savedVerses = [];
 let isViewingBookmarks = false;
 let pendingConfirmAction = null; 
 let pendingCancelAction = null;
 
-// Multi-Select State
 let isSelectionMode = false;
 let selectedVerseRefs = new Set();
 let longPressTimer = null;
 
-// --- 1. CORE UI FUNCTIONS ---
+// New Reference Search State
+let refSearchRows = ["", "", "", "", ""]; // Start with 5 empty rows
+
+// --- 1. CORE UI HELPERS ---
 
 function updateStatus(msg) {
     const el = document.querySelector('.placeholder-msg');
@@ -76,7 +86,6 @@ function handleSuggestions(e) {
 
 function renderFilters() {
     const filtersContainer = document.getElementById('category-filters');
-    const input = document.getElementById('search-input');
     filtersContainer.innerHTML = '';
 
     BOOKS_CONFIG.forEach(book => {
@@ -86,6 +95,8 @@ function renderFilters() {
         btn.onclick = () => {
             if (activeCategories.has(book.id)) { activeCategories.delete(book.id); btn.classList.remove('active'); } 
             else { activeCategories.add(book.id); btn.classList.add('active'); }
+            // Re-run search if active
+            const input = document.getElementById('search-input');
             if (input.value.length > 2) performSearch(input.value);
         };
         filtersContainer.appendChild(btn);
@@ -95,15 +106,12 @@ function renderFilters() {
     sep.style.cssText = "width: 1px; height: 20px; background: var(--border); margin: 0 5px;";
     filtersContainer.appendChild(sep);
 
-    const createToggle = (label, isEnabled, toggleFn) => {
-        const btn = document.createElement('button');
-        btn.className = `filter-chip ${isEnabled ? 'active-secondary' : ''}`;
-        btn.innerText = label;
-        btn.onclick = () => { toggleFn(); btn.classList.toggle('active-secondary'); if (input.value.length > 2) performSearch(input.value); };
-        filtersContainer.appendChild(btn);
-    };
-    createToggle("Search Ref", searchRefEnabled, () => searchRefEnabled = !searchRefEnabled);
-    createToggle("Search Text", searchTextEnabled, () => searchTextEnabled = !searchTextEnabled);
+    // NEW: Search By Reference Button
+    const refBtn = document.createElement('button');
+    refBtn.className = 'filter-chip active-secondary';
+    refBtn.innerText = 'Search By Reference';
+    refBtn.onclick = openRefModal;
+    filtersContainer.appendChild(refBtn);
 }
 
 function createModalFooter() {
@@ -167,6 +175,7 @@ function initUI() {
 
     renderFilters();
 
+    // Confirm Modal
     const confirmOverlay = document.getElementById('confirm-overlay');
     const confirmCancel = document.getElementById('confirm-cancel');
     const confirmYes = document.getElementById('confirm-yes');
@@ -180,19 +189,12 @@ function initUI() {
         confirmOverlay.classList.add('hidden');
     };
 
+    // Main Modal & Selection Buttons
     const modalOverlay = document.getElementById('modal-overlay');
     const mainCloseBtn = document.querySelector('.main-close');
     
-    if(mainCloseBtn) mainCloseBtn.onclick = () => {
-        modalOverlay.classList.add('hidden');
-        exitSelectionMode();
-    };
-    if(modalOverlay) modalOverlay.onclick = (e) => { 
-        if (e.target === modalOverlay) {
-            modalOverlay.classList.add('hidden');
-            exitSelectionMode();
-        }
-    };
+    if(mainCloseBtn) mainCloseBtn.onclick = () => { modalOverlay.classList.add('hidden'); exitSelectionMode(); };
+    if(modalOverlay) modalOverlay.onclick = (e) => { if (e.target === modalOverlay) { modalOverlay.classList.add('hidden'); exitSelectionMode(); } };
 
     const closeSel = document.getElementById('sel-close-btn');
     const copySel = document.getElementById('sel-copy-btn');
@@ -202,7 +204,20 @@ function initUI() {
     if(copySel) copySel.onclick = copySelectedVerses;
     if(bookSel) bookSel.onclick = saveSelectedVerses;
 
-    // --- FIXED SWIPE NAV ---
+    // Ref Modal Buttons
+    const refModal = document.getElementById('ref-modal');
+    const refClose = document.querySelector('.ref-close');
+    const addRefBtn = document.getElementById('add-ref-btn');
+    const clearRefBtn = document.getElementById('clear-refs-btn');
+    const searchRefBtn = document.getElementById('search-refs-btn');
+
+    if(refClose) refClose.onclick = () => refModal.classList.add('hidden');
+    if(refModal) refModal.onclick = (e) => { if (e.target === refModal) refModal.classList.add('hidden'); };
+    if(addRefBtn) addRefBtn.onclick = addReferenceRow;
+    if(clearRefBtn) clearRefBtn.onclick = confirmClearRefs;
+    if(searchRefBtn) searchRefBtn.onclick = performMultiRefSearch;
+
+    // Swipe Nav
     const modalContent = document.querySelector('.modal-content');
     let touchStartX = 0;
     let touchStartY = 0;
@@ -217,10 +232,8 @@ function initUI() {
             const dist = touchStartX - e.changedTouches[0].screenX;
             const distY = touchStartY - e.changedTouches[0].screenY;
             
-            // RELAXED CHECK: Only block swipe if Vertical movement is significantly (1.5x) larger than Horizontal
-            if (Math.abs(distY) > Math.abs(dist) * 1.5) return;
+            if (Math.abs(distY) > Math.abs(dist) * 1.5) return; // Vertical Lock
 
-            // Threshold lowered to 40px for easier swiping
             if (dist > 40) handleNavigation(1); 
             else if (dist < -40) handleNavigation(-1);
         }, {passive: true});
@@ -235,13 +248,14 @@ function initUI() {
     if(nextBtn) nextBtn.onclick = () => handleNavigation(1);
 }
 
-// --- 3. CORE LOGIC ---
+// --- 3. DATA LOADING ---
 
 async function loadAllBooks() {
     updateStatus("Loading Library...");
     allVerses = [];
     let tempWords = new Set();
     let tempChapters = new Set();
+    let tempBooks = new Set(); // For ghost text
     const loadedFiles = {}; 
 
     const uniqueFiles = [...new Set(BOOKS_CONFIG.map(b => b.file))];
@@ -253,12 +267,16 @@ async function loadAllBooks() {
     }));
 
     BOOKS_CONFIG.forEach(config => {
+        // Add books to set for ghost text
+        config.books.forEach(b => tempBooks.add(b));
+        
         const text = loadedFiles[config.file];
         if (text) parseBookText(text, config, tempWords, tempChapters);
     });
 
     uniqueWords = Array.from(tempWords).sort();
     chapterList = Array.from(tempChapters);
+    allBookNames = Array.from(tempBooks).sort();
     
     if (allVerses.length === 0) updateStatus("Error: standard_works.txt not found.");
     else updateStatus("Ready to search.");
@@ -301,570 +319,202 @@ function parseBookText(fullText, config, wordSet, chapterSet) {
     });
 }
 
-function toggleBookmarkView() {
-    const filters = document.getElementById('category-filters');
-    const searchContainer = document.getElementById('search-container');
-    const title = document.getElementById('bookmarks-title');
-    const resultsArea = document.getElementById('results-area');
-    const input = document.getElementById('search-input');
-    const btn = document.getElementById('bookmarks-btn');
+// --- 4. NEW REFERENCE SEARCH LOGIC ---
 
-    if (isViewingBookmarks) {
-        // EXIT BOOKMARK MODE
-        isViewingBookmarks = false;
+function openRefModal() {
+    renderRefInputs();
+    document.getElementById('ref-modal').classList.remove('hidden');
+}
+
+function renderRefInputs() {
+    const container = document.getElementById('ref-inputs-container');
+    container.innerHTML = '';
+    
+    refSearchRows.forEach((val, idx) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ref-input-wrapper';
         
-        filters.classList.remove('hidden');
-        searchContainer.classList.remove('hidden');
-        title.classList.add('hidden');
+        const ghost = document.createElement('span');
+        ghost.className = 'ghost-text';
+        ghost.id = `ghost-${idx}`;
         
-        input.value = "";
-        resultsArea.innerHTML = '<div class="placeholder-msg">Ready to search.</div>';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'ref-input';
+        input.value = val;
+        input.placeholder = `Reference ${idx + 1}`;
+        input.autocomplete = "off";
         
-        btn.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
-    } else {
-        // ENTER BOOKMARK MODE
-        isViewingBookmarks = true;
-        
-        filters.classList.add('hidden');
-        searchContainer.classList.add('hidden');
-        title.classList.remove('hidden');
-        
-        btn.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
-        
-        showSavedVerses();
+        // Input Event: Update Array + Ghost Logic
+        input.addEventListener('input', (e) => {
+            refSearchRows[idx] = e.target.value;
+            expandAbbreviations(e.target); // Check D&C etc
+            handleGhostText(e.target, ghost);
+        });
+
+        // Keydown: Tab/Right Arrow accept ghost
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab' || e.key === 'ArrowRight') {
+                acceptGhostText(input, ghost);
+            }
+        });
+
+        // Touch: Swipe Right accept ghost
+        let touchStartX = 0;
+        input.addEventListener('touchstart', (e) => touchStartX = e.changedTouches[0].screenX, {passive: true});
+        input.addEventListener('touchend', (e) => {
+            const dist = e.changedTouches[0].screenX - touchStartX;
+            if (dist > 30) acceptGhostText(input, ghost); // Swipe Right
+        }, {passive: true});
+
+        wrapper.appendChild(ghost);
+        wrapper.appendChild(input);
+        container.appendChild(wrapper);
+    });
+}
+
+function addReferenceRow() {
+    if (refSearchRows.length < 20) {
+        refSearchRows.push("");
+        renderRefInputs();
     }
 }
 
-// --- FIXED CLEAR ALL LOGIC ---
-function showSavedVerses() {
+function confirmClearRefs() {
+    showConfirmation("Clear all reference inputs?", () => {
+        refSearchRows = ["", "", "", "", ""]; // Reset to 5
+        renderRefInputs();
+    });
+}
+
+// Auto-Expand Abbreviations
+function expandAbbreviations(inputEl) {
+    const val = inputEl.value.toLowerCase();
+    if (ABBREVIATIONS[val]) {
+        inputEl.value = ABBREVIATIONS[val] + " "; // Add space
+    }
+}
+
+// Ghost Text Logic
+function handleGhostText(inputEl, ghostEl) {
+    const val = inputEl.value;
+    ghostEl.innerText = ""; // Clear current ghost
+    
+    if (val.length < 2) return; // Too short
+
+    // Find a book that starts with this text (case insensitive)
+    const match = allBookNames.find(book => book.toLowerCase().startsWith(val.toLowerCase()));
+    
+    if (match) {
+        // If the user typed "1 ne", match is "1 Nephi"
+        // We need to display "phi" offset by the width of "1 ne"
+        // Ideally, we just show the whole word in ghost, but invisible chars for what user typed.
+        
+        // CSS Trick: Set ghost text to "1 Ne" (invisible) + "phi" (visible)
+        // But simply setting text content works because input is on top.
+        // We just need casing to match for the "hidden" part? No, input bg is transparent.
+        // Solution: Ghost text contains the FULL match. 
+        // But we need the part user typed to be invisible so it doesn't double render with different kerning?
+        // Actually, opacity 0.5 works okay if fonts match perfectly.
+        
+        // Better: Ghost text only shows the suffix.
+        const suffix = match.slice(val.length);
+        
+        // Create invisible prefix to push suffix to right pos
+        const invisiblePrefix = val.replace(/./g, ' '); // Spaces usually narrower...
+        // Let's stick to the "Value + Suffix" approach in JS, 
+        // actually simple "match" as ghost text behind input works if input bg is transparent.
+        
+        ghostEl.innerText = match;
+    }
+}
+
+function acceptGhostText(inputEl, ghostEl) {
+    if (ghostEl.innerText && ghostEl.innerText.length > inputEl.value.length) {
+        inputEl.value = ghostEl.innerText + " "; // Accept + space
+        ghostEl.innerText = "";
+        refSearchRows[refSearchRows.indexOf(inputEl.value.trim())] = inputEl.value; // Update state? logic complex here
+        // Update state based on input index (need to pass idx or find it)
+        // Re-trigger input event to save state
+        inputEl.dispatchEvent(new Event('input'));
+    }
+}
+
+function performMultiRefSearch() {
+    // 1. Close Modal
+    document.getElementById('ref-modal').classList.add('hidden');
+    isViewingBookmarks = false;
+    
     const resultsArea = document.getElementById('results-area');
-    
-    currentSearchResults = savedVerses;
-    renderedCount = 0;
-    
     resultsArea.innerHTML = '';
     
-    if (savedVerses.length === 0) {
-        resultsArea.innerHTML = '<div class="placeholder-msg full-width-header">No saved scriptures yet.<br>Tap "Save" on any verse to add it here.</div>';
-        return;
-    }
+    currentSearchResults = [];
     
-    // Add Header with ID for safe binding
-    resultsArea.innerHTML = `
-        <div class="full-width-header" style="display:flex; justify-content:space-between; align-items:center; padding:0 10px 10px 10px; color:var(--text-light); font-size:0.9rem;">
-            <span>Swipe left to delete</span>
-            <button id="clear-all-btn" style="background:none; border:none; color:#ef4444; font-weight:bold; cursor:pointer;">Clear All</button>
-        </div>
-    `;
-    
-    // SAFE BINDING: Attach listener via JS, not HTML
-    const clearBtn = document.getElementById('clear-all-btn');
-    if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
-            showConfirmation("Delete ALL saved scriptures?", () => {
-                savedVerses = [];
-                saveToLocalStorage();
-                showSavedVerses();
+    // 2. Iterate and Search
+    const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
+    const simpleRefRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+)(?::(\d+))?$/; // Matches "1 Nephi 3" or "1 Nephi 3:4"
+
+    refSearchRows.forEach(query => {
+        if (!query.trim()) return;
+        const q = query.trim().toLowerCase();
+        
+        let batchResults = [];
+
+        // Try Range
+        const rangeMatch = q.match(rangeRegex);
+        if (rangeMatch) {
+            const bookName = rangeMatch[1].trim();
+            const chapterNum = rangeMatch[2];
+            const startVerse = parseInt(rangeMatch[3]);
+            const endVerse = parseInt(rangeMatch[4]);
+            
+            batchResults = allVerses.filter(v => {
+                const vRefLower = v.ref.toLowerCase();
+                if (vRefLower.startsWith(`${bookName} ${chapterNum}:`)) {
+                    const parts = v.ref.split(':');
+                    if (parts.length > 1) {
+                        const vNum = parseInt(parts[1]);
+                        return vNum >= startVerse && vNum <= endVerse;
+                    }
+                }
+                return false;
             });
-        });
-    }
-    
-    renderNextBatch(""); 
-}
+        } 
+        // Try Simple Ref (Chapter or Single Verse)
+        else {
+            // "1 nephi 3" -> match start
+            batchResults = allVerses.filter(v => v.ref.toLowerCase().startsWith(q));
+        }
+        
+        currentSearchResults = [...currentSearchResults, ...batchResults];
+    });
 
-function toggleSaveVerse(verse) {
-    const existingIdx = savedVerses.findIndex(v => v.ref === verse.ref);
-    if (existingIdx > -1) {
-        savedVerses.splice(existingIdx, 1);
+    // Remove Duplicates (by ref)
+    const uniqueIds = new Set();
+    currentSearchResults = currentSearchResults.filter(v => {
+        if (uniqueIds.has(v.ref)) return false;
+        uniqueIds.add(v.ref);
+        return true;
+    });
+
+    if (currentSearchResults.length === 0) {
+        resultsArea.innerHTML = '<div class="placeholder-msg full-width-header">No matches found.</div>';
     } else {
-        savedVerses.unshift(verse);
+        renderedCount = 0;
+        renderNextBatch(""); // No highlight query for ref search
     }
-    saveToLocalStorage();
-    
-    if (isViewingBookmarks) showSavedVerses();
-    openVerseView(verse, currentResultIndex);
 }
 
-// --- 5. SEARCH & RESULTS ---
+// --- 5. STANDARD SEARCH (Single Input) ---
 
 function performSearch(query) {
-    if (isViewingBookmarks) {
-        toggleBookmarkView();
-        document.getElementById('search-input').value = query; 
-    }
+    if (isViewingBookmarks) toggleBookmarkView();
+    if(document.getElementById('search-input').value !== query) document.getElementById('search-input').value = query;
 
     const resultsArea = document.getElementById('results-area');
-    const input = document.getElementById('search-input');
-    input.placeholder = "Search scriptures...";
-
     if (!query) return;
     resultsArea.innerHTML = '';
     const q = query.toLowerCase().trim();
     
     const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
-    const rangeMatch = query.match(rangeRegex);
-
-    if (rangeMatch && searchRefEnabled) {
-        const bookName = rangeMatch[1].trim().toLowerCase();
-        const chapterNum = rangeMatch[2];
-        const startVerse = parseInt(rangeMatch[3]);
-        const endVerse = parseInt(rangeMatch[4]);
-        
-        currentSearchResults = allVerses.filter(v => {
-            if (!activeCategories.has(v.source)) return false;
-            const vRefLower = v.ref.toLowerCase();
-            const targetPrefix = `${bookName} ${chapterNum}:`;
-            
-            if (vRefLower.startsWith(targetPrefix)) {
-                const parts = v.ref.split(':');
-                if (parts.length > 1) {
-                    const vNum = parseInt(parts[1]);
-                    return vNum >= startVerse && vNum <= endVerse;
-                }
-            }
-            return false;
-        });
-
-    } else {
-        let refMatches = [];
-        let textMatches = [];
-
-        if (!searchRefEnabled && !searchTextEnabled) { resultsArea.innerHTML = '<div class="placeholder-msg full-width-header">Enable "Search Ref" or "Search Text".</div>'; return; }
-
-        allVerses.forEach(v => {
-            if (!activeCategories.has(v.source)) return;
-            const matchRef = searchRefEnabled && v.ref.toLowerCase().includes(q);
-            const matchText = searchTextEnabled && v.text.toLowerCase().includes(q);
-
-            if (matchRef) refMatches.push(v);
-            else if (matchText) textMatches.push(v);
-        });
-        currentSearchResults = [...refMatches, ...textMatches];
-    }
-
-    if (currentSearchResults.length === 0) { resultsArea.innerHTML = '<div class="placeholder-msg full-width-header">No matches found.</div>'; return; }
-
-    renderedCount = 0;
-    renderNextBatch(q);
-}
-
-function renderNextBatch(highlightQuery) {
-    const resultsArea = document.getElementById('results-area');
-    
-    if (!isViewingBookmarks && renderedCount === 0) resultsArea.innerHTML = '';
-    
-    const start = renderedCount;
-    const end = Math.min(renderedCount + BATCH_SIZE, currentSearchResults.length);
-    const batch = currentSearchResults.slice(start, end);
-
-    const existingBtn = document.getElementById('load-more-btn');
-    if (existingBtn) existingBtn.remove();
-
-    batch.forEach((verse, idx) => {
-        const globalIndex = start + idx;
-        const box = document.createElement('div'); 
-        box.className = 'verse-box';
-        
-        if (isViewingBookmarks) {
-            const delBtn = document.createElement('button');
-            delBtn.className = 'delete-btn-desktop visible';
-            delBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-            delBtn.onclick = (e) => {
-                e.stopPropagation(); 
-                deleteBookmark(verse); 
-            };
-            box.appendChild(delBtn);
-
-            let touchStartX = 0;
-            let touchStartY = 0;
-            
-            box.addEventListener('touchstart', (e) => {
-                touchStartX = e.changedTouches[0].screenX;
-                touchStartY = e.changedTouches[0].screenY;
-                box.style.transition = 'none';
-            }, {passive: true});
-            
-            box.addEventListener('touchmove', (e) => {
-                const currentX = e.changedTouches[0].screenX;
-                const currentY = e.changedTouches[0].screenY;
-                const diff = touchStartX - currentX;
-                const diffY = touchStartY - currentY;
-
-                // RELAXED SWIPE: Only block if vertical is 1.5x horizontal
-                if (Math.abs(diffY) > Math.abs(diff) * 1.5) return;
-
-                if (diff > 0) { 
-                    const limit = Math.min(diff, 90);
-                    box.style.transform = `translateX(-${limit}px)`;
-                    const opacity = Math.min(diff / 150, 0.4);
-                    box.style.backgroundColor = `rgba(239, 68, 68, ${opacity})`;
-                }
-            }, {passive: true});
-
-            box.addEventListener('touchend', (e) => {
-                const dist = touchStartX - e.changedTouches[0].screenX;
-                const distY = touchStartY - e.changedTouches[0].screenY;
-                
-                if (Math.abs(distY) > Math.abs(dist) * 1.5) {
-                    box.style.transform = 'translateX(0)';
-                    box.style.backgroundColor = ''; 
-                    return;
-                }
-
-                box.style.transition = 'transform 0.3s, background-color 0.3s';
-                
-                if (dist > 70) { 
-                    box.style.transform = `translateX(-90px)`; 
-                    deleteBookmark(verse, () => {
-                        box.style.transform = 'translateX(0)';
-                        box.style.backgroundColor = '';
-                    });
-                } else {
-                    box.style.transform = 'translateX(0)';
-                    box.style.backgroundColor = ''; 
-                }
-            }, {passive: true});
-        }
-        
-        let snippet = verse.text;
-        let refDisplay = verse.ref;
-
-        if (!isViewingBookmarks && highlightQuery) {
-            if (searchTextEnabled) snippet = verse.text.replace(new RegExp(`(${highlightQuery})`, 'gi'), '<b style="color:var(--primary);">$1</b>');
-            if (searchRefEnabled) refDisplay = verse.ref.replace(new RegExp(`(${highlightQuery})`, 'gi'), '<span style="background:rgba(37,99,235,0.1); color:var(--primary);">$1</span>');
-        }
-
-        const sourceBadge = BOOKS_CONFIG.find(b => b.id === verse.source).name;
-
-        const contentDiv = document.createElement('div');
-        contentDiv.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span class="verse-ref">${refDisplay}</span>
-                <span style="font-size:0.7rem; color:var(--text-light); border:1px solid var(--border); padding:2px 6px; border-radius:4px;">${sourceBadge}</span>
-            </div>
-            <div class="verse-snippet">${snippet}</div>`;
-        box.appendChild(contentDiv);
-        
-        box.onclick = () => openVerseView(verse, globalIndex);
-        resultsArea.appendChild(box);
-    });
-
-    renderedCount = end;
-
-    if (renderedCount < currentSearchResults.length) {
-        const loadMoreBtn = document.createElement('button');
-        loadMoreBtn.id = 'load-more-btn';
-        loadMoreBtn.className = 'full-width-header'; 
-        loadMoreBtn.innerText = `Load More (${currentSearchResults.length - renderedCount} remaining)`;
-        loadMoreBtn.style.cssText = "width:100%; padding:15px; margin-top:10px; background:var(--bg); border:1px solid var(--border); border-radius:12px; color:var(--primary); font-weight:600; cursor:pointer;";
-        loadMoreBtn.onclick = () => renderNextBatch(highlightQuery);
-        resultsArea.appendChild(loadMoreBtn);
-    }
-}
-
-// --- 6. MULTI-SELECT ---
-
-function handleLongPress(verseRef) {
-    if (viewMode !== 'chapter') return;
-    if (!isSelectionMode) {
-        enterSelectionMode();
-        toggleVerseSelection(verseRef);
-        if (navigator.vibrate) navigator.vibrate(50);
-    }
-}
-
-function handleVerseTap(verseRef) {
-    if (isSelectionMode) {
-        toggleVerseSelection(verseRef);
-    }
-}
-
-function enterSelectionMode() {
-    isSelectionMode = true;
-    selectedVerseRefs.clear();
-    document.getElementById('selection-toolbar').classList.remove('hidden');
-}
-
-function exitSelectionMode() {
-    isSelectionMode = false;
-    selectedVerseRefs.clear();
-    document.getElementById('selection-toolbar').classList.add('hidden');
-    document.querySelectorAll('.chapter-verse.selected').forEach(el => el.classList.remove('selected'));
-}
-
-function toggleVerseSelection(ref) {
-    const verseId = `v-${ref.replace(/[^a-zA-Z0-9]/g, '-')}`;
-    const el = document.getElementById(verseId);
-    
-    if (selectedVerseRefs.has(ref)) {
-        selectedVerseRefs.delete(ref);
-        if (el) el.classList.remove('selected');
-    } else {
-        selectedVerseRefs.add(ref);
-        if (el) el.classList.add('selected');
-    }
-    
-    updateSelectionUI();
-}
-
-function updateSelectionUI() {
-    const count = selectedVerseRefs.size;
-    document.getElementById('selection-count').innerText = `${count} selected`;
-    if (count === 0) exitSelectionMode();
-}
-
-function copySelectedVerses() {
-    const sortedVerses = allVerses.filter(v => selectedVerseRefs.has(v.ref));
-    if (sortedVerses.length === 0) return;
-
-    const firstRefParts = sortedVerses[0].ref.split(':');
-    const bookAndChapter = firstRefParts[0];
-    const startNum = parseInt(firstRefParts[1]);
-    const endNum = parseInt(sortedVerses[sortedVerses.length - 1].ref.split(':')[1]);
-    
-    const rangeHeader = sortedVerses.length > 1 
-        ? `${bookAndChapter}:${startNum}-${endNum}` 
-        : sortedVerses[0].ref;
-
-    const bodyText = sortedVerses.map(v => {
-        const num = v.ref.split(':')[1];
-        return `${num} ${v.text}`;
-    }).join('\n\n');
-
-    const finalText = `"${rangeHeader}\n${bodyText}"`;
-    
-    navigator.clipboard.writeText(finalText).then(() => {
-        alert("Verses copied to clipboard!");
-        exitSelectionMode();
-    });
-}
-
-function saveSelectedVerses() {
-    const sortedVerses = allVerses.filter(v => selectedVerseRefs.has(v.ref));
-    if (sortedVerses.length === 0) return;
-
-    const firstVerse = sortedVerses[0];
-    const lastVerse = sortedVerses[sortedVerses.length - 1];
-    const isRange = sortedVerses.length > 1;
-    
-    let mergedRef = firstVerse.ref;
-    if (isRange) {
-        const parts = firstVerse.ref.split(':'); 
-        const endNum = lastVerse.ref.split(':')[1];
-        mergedRef = `${parts[0]}:${parts[1]}-${endNum}`;
-    }
-
-    const mergedText = sortedVerses.map(v => {
-        const num = v.ref.split(':')[1];
-        return `<b>${num}</b> ${v.text}`; 
-    }).join('\n\n');
-
-    const mergedObj = {
-        id: `merged-${Date.now()}`,
-        ref: mergedRef,
-        text: mergedText,
-        source: firstVerse.source,
-        chapterId: firstVerse.chapterId
-    };
-
-    if (!savedVerses.some(sv => sv.ref === mergedRef)) {
-        savedVerses.unshift(mergedObj);
-        saveToLocalStorage();
-        alert(`Saved bookmark: ${mergedRef}`);
-        if (isViewingBookmarks) showSavedVerses();
-    } else {
-        alert("This selection is already bookmarked.");
-    }
-    
-    exitSelectionMode();
-}
-
-// --- 7. MODAL HELPERS ---
-
-function openPopup(title, text) {
-    const modalOverlay = document.getElementById('modal-overlay');
-    const modalRef = document.querySelector('.modal-ref');
-    const modalText = document.getElementById('modal-text');
-    const modalContent = document.querySelector('.modal-content');
-    const modalFooter = document.querySelector('.modal-footer') || createModalFooter();
-    
-    viewMode = 'verse';
-    modalContent.classList.add('short');
-    
-    modalOverlay.classList.remove('hidden');
-    modalRef.innerText = title;
-    modalText.innerText = text;
-    modalFooter.innerHTML = '';
-    
-    document.getElementById('prev-chapter-btn').classList.add('hidden');
-    document.getElementById('next-chapter-btn').classList.add('hidden');
-}
-
-function openVerseView(verse, index) {
-    viewMode = 'verse';
-    currentResultIndex = index;
-    
-    const modalOverlay = document.getElementById('modal-overlay');
-    const modalRef = document.querySelector('.modal-ref');
-    const modalText = document.getElementById('modal-text');
-    const modalContent = document.querySelector('.modal-content');
-    const modalFooter = document.querySelector('.modal-footer') || createModalFooter();
-    const prevBtn = document.getElementById('prev-chapter-btn');
-    const nextBtn = document.getElementById('next-chapter-btn');
-
-    modalOverlay.classList.remove('hidden');
-    modalContent.classList.add('short'); 
-
-    modalRef.innerText = verse.ref;
-    modalText.innerHTML = verse.text; 
-    modalText.scrollTop = 0;
-
-    prevBtn.classList.remove('hidden');
-    nextBtn.classList.remove('hidden');
-    
-    prevBtn.style.opacity = index <= 0 ? '0.3' : '1';
-    nextBtn.style.opacity = index >= currentSearchResults.length - 1 ? '0.3' : '1';
-
-    modalFooter.innerHTML = '';
-
-    const chapterBtn = document.createElement('button'); 
-    chapterBtn.className = 'action-btn';
-    chapterBtn.innerText = `View Chapter`; 
-    chapterBtn.onclick = () => viewChapter(verse.chapterId, verse.ref);
-    modalFooter.appendChild(chapterBtn);
-
-    const isSaved = savedVerses.some(v => v.ref === verse.ref);
-    const saveBtn = document.createElement('button');
-    saveBtn.className = isSaved ? 'save-icon-btn saved' : 'save-icon-btn';
-    saveBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="${isSaved ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
-    saveBtn.onclick = () => toggleSaveVerse(verse);
-    modalFooter.appendChild(saveBtn);
-}
-
-function viewChapter(chapterId, highlightRef = null) {
-    viewMode = 'chapter';
-    currentChapterIndex = chapterList.indexOf(chapterId); 
-    if (currentChapterIndex === -1) return;
-    
-    const modalContent = document.querySelector('.modal-content');
-    modalContent.classList.remove('short'); 
-    
-    loadChapterContent(chapterId, highlightRef);
-    
-    document.querySelector('.modal-footer').innerHTML = ''; 
-}
-
-function loadChapterContent(chapterId, highlightRef = null) {
-    const modalRef = document.querySelector('.modal-ref');
-    const modalText = document.getElementById('modal-text');
-    const prevBtn = document.getElementById('prev-chapter-btn');
-    const nextBtn = document.getElementById('next-chapter-btn');
-    
-    const chapterVerses = allVerses.filter(v => v.chapterId === chapterId);
-    
-    const fullText = chapterVerses.map(v => {
-        const parts = v.ref.split(':'); 
-        const num = parts.length > 1 ? parts[1].trim() : '';
-        const isTarget = v.ref === highlightRef;
-        const highlightClass = isTarget ? 'highlight-verse' : '';
-        const verseId = `v-${v.ref.replace(/[^a-zA-Z0-9]/g, '-')}`;
-        return `<div id="${verseId}" class="chapter-verse ${highlightClass}" data-ref="${v.ref}"><b>${num}</b> ${v.text}</div>`;
-    }).join(''); 
-    
-    modalRef.innerText = chapterId; 
-    modalText.innerHTML = fullText; 
-
-    // Inject Desktop Select Button
-    const headerRight = document.querySelector('.modal-header');
-    const existingSelBtn = document.querySelector('.desktop-select-btn-injected');
-    if (existingSelBtn) existingSelBtn.remove();
-
-    const closeBtn = document.querySelector('.main-close');
-    const selectBtn = document.createElement('button');
-    selectBtn.className = 'desktop-select-btn desktop-select-btn-injected';
-    selectBtn.innerText = 'Select';
-    selectBtn.onclick = enterSelectionMode;
-    
-    if (closeBtn && headerRight) {
-        headerRight.insertBefore(selectBtn, closeBtn);
-    }
-
-    const verseElements = modalText.querySelectorAll('.chapter-verse');
-    verseElements.forEach(el => {
-        const ref = el.getAttribute('data-ref');
-        el.addEventListener('click', () => handleVerseTap(ref));
-        el.addEventListener('touchstart', (e) => {
-            longPressTimer = setTimeout(() => handleLongPress(ref), 500); 
-        }, {passive: true});
-        el.addEventListener('touchend', () => clearTimeout(longPressTimer));
-        el.addEventListener('touchmove', () => clearTimeout(longPressTimer));
-    });
-
-    if (highlightRef) {
-        setTimeout(() => {
-            const targetId = `v-${highlightRef.replace(/[^a-zA-Z0-9]/g, '-')}`;
-            const el = document.getElementById(targetId);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 400); 
-    } else {
-        modalText.scrollTop = 0;
-    }
-
-    prevBtn.classList.remove('hidden');
-    nextBtn.classList.remove('hidden');
-    
-    prevBtn.style.opacity = currentChapterIndex <= 0 ? '0.3' : '1';
-    nextBtn.style.opacity = currentChapterIndex >= chapterList.length - 1 ? '0.3' : '1';
-}
-
-function executeDelete(verse) {
-    const idx = savedVerses.findIndex(v => v.ref === verse.ref);
-    if (idx > -1) {
-        savedVerses.splice(idx, 1);
-        saveToLocalStorage();
-        showSavedVerses(); 
-    }
-}
-
-function deleteBookmark(verse, onCancel = null) {
-    showConfirmation(
-        `Remove "${verse.ref}"?`, 
-        () => executeDelete(verse),
-        onCancel 
-    );
-}
-
-function showConfirmation(msg, confirmCallback, cancelCallback = null) {
-    const overlay = document.getElementById('confirm-overlay');
-    const msgEl = document.getElementById('confirm-msg');
-    
-    if(overlay && msgEl) {
-        msgEl.innerText = msg;
-        pendingConfirmAction = confirmCallback;
-        pendingCancelAction = cancelCallback;
-        overlay.classList.remove('hidden');
-    }
-}
-
-function handleNavigation(direction) {
-    if (viewMode === 'verse') {
-        const newIndex = currentResultIndex + direction;
-        if (newIndex >= 0 && newIndex < currentSearchResults.length) {
-            currentResultIndex = newIndex;
-            openVerseView(currentSearchResults[newIndex], newIndex);
-        }
-    } else {
-        const newIndex = currentChapterIndex + direction;
-        if (newIndex >= 0 && newIndex < chapterList.length) {
-            currentChapterIndex = newIndex;
-            const newChapterId = chapterList[newIndex];
-            
-            const modalText = document.getElementById('modal-text');
-            modalText.style.opacity = 0;
-            setTimeout(() => { 
-                loadChapterContent(newChapterId);
-                modalText.style.opacity = 1; 
-            }, 150);
-        }
-    }
-}
+    const rangeMatch = q
