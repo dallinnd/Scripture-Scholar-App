@@ -39,7 +39,7 @@ let allVerses = [];
 let uniqueWords = [];
 let chapterList = [];
 let activeCategories = new Set(BOOKS_CONFIG.map(b => b.id)); 
-let allBookNames = []; // Flattened list for ghost text
+let allBookNames = []; 
 
 let currentSearchResults = [];
 let currentResultIndex = -1; 
@@ -57,8 +57,7 @@ let isSelectionMode = false;
 let selectedVerseRefs = new Set();
 let longPressTimer = null;
 
-// New Reference Search State
-let refSearchRows = ["", "", "", "", ""]; // Start with 5 empty rows
+let refSearchRows = ["", "", "", "", ""]; 
 
 // --- 1. CORE UI HELPERS ---
 
@@ -95,7 +94,6 @@ function renderFilters() {
         btn.onclick = () => {
             if (activeCategories.has(book.id)) { activeCategories.delete(book.id); btn.classList.remove('active'); } 
             else { activeCategories.add(book.id); btn.classList.add('active'); }
-            // Re-run search if active
             const input = document.getElementById('search-input');
             if (input.value.length > 2) performSearch(input.value);
         };
@@ -106,19 +104,11 @@ function renderFilters() {
     sep.style.cssText = "width: 1px; height: 20px; background: var(--border); margin: 0 5px;";
     filtersContainer.appendChild(sep);
 
-    // NEW: Search By Reference Button
     const refBtn = document.createElement('button');
     refBtn.className = 'filter-chip active-secondary';
     refBtn.innerText = 'Search By Reference';
     refBtn.onclick = openRefModal;
     filtersContainer.appendChild(refBtn);
-}
-
-function createModalFooter() {
-    const f = document.createElement('div');
-    f.className = 'modal-footer';
-    document.querySelector('.modal-content').appendChild(f);
-    return f;
 }
 
 // --- 2. INITIALIZATION ---
@@ -175,7 +165,6 @@ function initUI() {
 
     renderFilters();
 
-    // Confirm Modal
     const confirmOverlay = document.getElementById('confirm-overlay');
     const confirmCancel = document.getElementById('confirm-cancel');
     const confirmYes = document.getElementById('confirm-yes');
@@ -189,7 +178,6 @@ function initUI() {
         confirmOverlay.classList.add('hidden');
     };
 
-    // Main Modal & Selection Buttons
     const modalOverlay = document.getElementById('modal-overlay');
     const mainCloseBtn = document.querySelector('.main-close');
     
@@ -217,7 +205,6 @@ function initUI() {
     if(clearRefBtn) clearRefBtn.onclick = confirmClearRefs;
     if(searchRefBtn) searchRefBtn.onclick = performMultiRefSearch;
 
-    // Swipe Nav
     const modalContent = document.querySelector('.modal-content');
     let touchStartX = 0;
     let touchStartY = 0;
@@ -232,7 +219,7 @@ function initUI() {
             const dist = touchStartX - e.changedTouches[0].screenX;
             const distY = touchStartY - e.changedTouches[0].screenY;
             
-            if (Math.abs(distY) > Math.abs(dist) * 1.5) return; // Vertical Lock
+            if (Math.abs(distY) > Math.abs(dist) * 1.5) return;
 
             if (dist > 40) handleNavigation(1); 
             else if (dist < -40) handleNavigation(-1);
@@ -255,7 +242,7 @@ async function loadAllBooks() {
     allVerses = [];
     let tempWords = new Set();
     let tempChapters = new Set();
-    let tempBooks = new Set(); // For ghost text
+    let tempBooks = new Set(); 
     const loadedFiles = {}; 
 
     const uniqueFiles = [...new Set(BOOKS_CONFIG.map(b => b.file))];
@@ -267,7 +254,6 @@ async function loadAllBooks() {
     }));
 
     BOOKS_CONFIG.forEach(config => {
-        // Add books to set for ghost text
         config.books.forEach(b => tempBooks.add(b));
         
         const text = loadedFiles[config.file];
@@ -319,7 +305,7 @@ function parseBookText(fullText, config, wordSet, chapterSet) {
     });
 }
 
-// --- 4. NEW REFERENCE SEARCH LOGIC ---
+// --- 4. REFERENCE SEARCH LOGIC ---
 
 function openRefModal() {
     renderRefInputs();
@@ -345,26 +331,23 @@ function renderRefInputs() {
         input.placeholder = `Reference ${idx + 1}`;
         input.autocomplete = "off";
         
-        // Input Event: Update Array + Ghost Logic
         input.addEventListener('input', (e) => {
             refSearchRows[idx] = e.target.value;
-            expandAbbreviations(e.target); // Check D&C etc
+            expandAbbreviations(e.target); 
             handleGhostText(e.target, ghost);
         });
 
-        // Keydown: Tab/Right Arrow accept ghost
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Tab' || e.key === 'ArrowRight') {
                 acceptGhostText(input, ghost);
             }
         });
 
-        // Touch: Swipe Right accept ghost
         let touchStartX = 0;
         input.addEventListener('touchstart', (e) => touchStartX = e.changedTouches[0].screenX, {passive: true});
         input.addEventListener('touchend', (e) => {
             const dist = e.changedTouches[0].screenX - touchStartX;
-            if (dist > 30) acceptGhostText(input, ghost); // Swipe Right
+            if (dist > 30) acceptGhostText(input, ghost); 
         }, {passive: true});
 
         wrapper.appendChild(ghost);
@@ -382,66 +365,41 @@ function addReferenceRow() {
 
 function confirmClearRefs() {
     showConfirmation("Clear all reference inputs?", () => {
-        refSearchRows = ["", "", "", "", ""]; // Reset to 5
+        refSearchRows = ["", "", "", "", ""]; 
         renderRefInputs();
     });
 }
 
-// Auto-Expand Abbreviations
 function expandAbbreviations(inputEl) {
     const val = inputEl.value.toLowerCase();
     if (ABBREVIATIONS[val]) {
-        inputEl.value = ABBREVIATIONS[val] + " "; // Add space
+        inputEl.value = ABBREVIATIONS[val] + " "; 
     }
 }
 
-// Ghost Text Logic
 function handleGhostText(inputEl, ghostEl) {
     const val = inputEl.value;
-    ghostEl.innerText = ""; // Clear current ghost
+    ghostEl.innerText = ""; 
     
-    if (val.length < 2) return; // Too short
+    if (val.length < 2) return; 
 
-    // Find a book that starts with this text (case insensitive)
     const match = allBookNames.find(book => book.toLowerCase().startsWith(val.toLowerCase()));
     
     if (match) {
-        // If the user typed "1 ne", match is "1 Nephi"
-        // We need to display "phi" offset by the width of "1 ne"
-        // Ideally, we just show the whole word in ghost, but invisible chars for what user typed.
-        
-        // CSS Trick: Set ghost text to "1 Ne" (invisible) + "phi" (visible)
-        // But simply setting text content works because input is on top.
-        // We just need casing to match for the "hidden" part? No, input bg is transparent.
-        // Solution: Ghost text contains the FULL match. 
-        // But we need the part user typed to be invisible so it doesn't double render with different kerning?
-        // Actually, opacity 0.5 works okay if fonts match perfectly.
-        
-        // Better: Ghost text only shows the suffix.
-        const suffix = match.slice(val.length);
-        
-        // Create invisible prefix to push suffix to right pos
-        const invisiblePrefix = val.replace(/./g, ' '); // Spaces usually narrower...
-        // Let's stick to the "Value + Suffix" approach in JS, 
-        // actually simple "match" as ghost text behind input works if input bg is transparent.
-        
         ghostEl.innerText = match;
     }
 }
 
 function acceptGhostText(inputEl, ghostEl) {
     if (ghostEl.innerText && ghostEl.innerText.length > inputEl.value.length) {
-        inputEl.value = ghostEl.innerText + " "; // Accept + space
+        inputEl.value = ghostEl.innerText + " "; 
         ghostEl.innerText = "";
-        refSearchRows[refSearchRows.indexOf(inputEl.value.trim())] = inputEl.value; // Update state? logic complex here
-        // Update state based on input index (need to pass idx or find it)
-        // Re-trigger input event to save state
+        refSearchRows[refSearchRows.indexOf(inputEl.value.trim())] = inputEl.value; 
         inputEl.dispatchEvent(new Event('input'));
     }
 }
 
 function performMultiRefSearch() {
-    // 1. Close Modal
     document.getElementById('ref-modal').classList.add('hidden');
     isViewingBookmarks = false;
     
@@ -450,9 +408,7 @@ function performMultiRefSearch() {
     
     currentSearchResults = [];
     
-    // 2. Iterate and Search
     const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
-    const simpleRefRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+)(?::(\d+))?$/; // Matches "1 Nephi 3" or "1 Nephi 3:4"
 
     refSearchRows.forEach(query => {
         if (!query.trim()) return;
@@ -460,7 +416,6 @@ function performMultiRefSearch() {
         
         let batchResults = [];
 
-        // Try Range
         const rangeMatch = q.match(rangeRegex);
         if (rangeMatch) {
             const bookName = rangeMatch[1].trim();
@@ -480,16 +435,13 @@ function performMultiRefSearch() {
                 return false;
             });
         } 
-        // Try Simple Ref (Chapter or Single Verse)
         else {
-            // "1 nephi 3" -> match start
             batchResults = allVerses.filter(v => v.ref.toLowerCase().startsWith(q));
         }
         
         currentSearchResults = [...currentSearchResults, ...batchResults];
     });
 
-    // Remove Duplicates (by ref)
     const uniqueIds = new Set();
     currentSearchResults = currentSearchResults.filter(v => {
         if (uniqueIds.has(v.ref)) return false;
@@ -501,17 +453,22 @@ function performMultiRefSearch() {
         resultsArea.innerHTML = '<div class="placeholder-msg full-width-header">No matches found.</div>';
     } else {
         renderedCount = 0;
-        renderNextBatch(""); // No highlight query for ref search
+        renderNextBatch(""); 
     }
 }
 
-// --- 5. STANDARD SEARCH (Single Input) ---
+// --- 5. SEARCH ---
 
 function performSearch(query) {
-    if (isViewingBookmarks) toggleBookmarkView();
-    if(document.getElementById('search-input').value !== query) document.getElementById('search-input').value = query;
+    if (isViewingBookmarks) {
+        toggleBookmarkView();
+        document.getElementById('search-input').value = query; 
+    }
 
     const resultsArea = document.getElementById('results-area');
+    const input = document.getElementById('search-input');
+    input.placeholder = "Search scriptures...";
+
     if (!query) return;
     resultsArea.innerHTML = '';
     const q = query.toLowerCase().trim();
@@ -520,7 +477,6 @@ function performSearch(query) {
     const rangeMatch = query.match(rangeRegex);
 
     if (rangeMatch) {
-        // Reuse logic? Just copy/paste for safety/speed
         const bookName = rangeMatch[1].trim().toLowerCase();
         const chapterNum = rangeMatch[2];
         const startVerse = parseInt(rangeMatch[3]);
@@ -539,14 +495,10 @@ function performSearch(query) {
             return false;
         });
     } else {
-        // Text Search
         let refMatches = [];
         let textMatches = [];
         allVerses.forEach(v => {
             if (!activeCategories.has(v.source)) return;
-            // Simplified check since toggles are gone -> Search BOTH by default? 
-            // Prompt implied "Search By Reference" replaces the toggles. 
-            // The main bar is now implied to be text/hybrid. 
             const matchRef = v.ref.toLowerCase().includes(q);
             const matchText = v.text.toLowerCase().includes(q);
             if (matchRef) refMatches.push(v);
@@ -600,7 +552,7 @@ function renderNextBatch(highlightQuery) {
             box.addEventListener('touchmove', (e) => {
                 const diff = touchStartX - e.changedTouches[0].screenX;
                 const diffY = touchStartY - e.changedTouches[0].screenY;
-                if (Math.abs(diffY) > Math.abs(diff) * 1.5) return; // Vertical Lock
+                if (Math.abs(diffY) > Math.abs(diff) * 1.5) return; 
 
                 if (diff > 0) { 
                     const limit = Math.min(diff, 90);
@@ -669,7 +621,7 @@ function renderNextBatch(highlightQuery) {
     }
 }
 
-// --- 6. BOOKMARKS, DELETE & TOGGLE ---
+// --- 6. BOOKMARKS ---
 
 function toggleBookmarkView() {
     const filters = document.getElementById('category-filters');
@@ -680,27 +632,19 @@ function toggleBookmarkView() {
     const btn = document.getElementById('bookmarks-btn');
 
     if (isViewingBookmarks) {
-        // EXIT BOOKMARK MODE
         isViewingBookmarks = false;
-        
         filters.classList.remove('hidden');
         searchContainer.classList.remove('hidden');
         title.classList.add('hidden');
-        
         input.value = "";
         resultsArea.innerHTML = '<div class="placeholder-msg">Ready to search.</div>';
-        
         btn.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
     } else {
-        // ENTER BOOKMARK MODE
         isViewingBookmarks = true;
-        
         filters.classList.add('hidden');
         searchContainer.classList.add('hidden');
         title.classList.remove('hidden');
-        
         btn.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
-        
         showSavedVerses();
     }
 }
@@ -746,7 +690,6 @@ function toggleSaveVerse(verse) {
         savedVerses.unshift(verse);
     }
     saveToLocalStorage();
-    
     if (isViewingBookmarks) showSavedVerses();
     openVerseView(verse, currentResultIndex);
 }
@@ -771,7 +714,6 @@ function executeDelete(verse) {
 function showConfirmation(msg, confirmCallback, cancelCallback = null) {
     const overlay = document.getElementById('confirm-overlay');
     const msgEl = document.getElementById('confirm-msg');
-    
     if(overlay && msgEl) {
         msgEl.innerText = msg;
         pendingConfirmAction = confirmCallback;
@@ -780,161 +722,25 @@ function showConfirmation(msg, confirmCallback, cancelCallback = null) {
     }
 }
 
-// --- 7. MULTI-SELECT & MODAL NAV ---
-
-function handleLongPress(verseRef) {
-    if (viewMode !== 'chapter') return;
-    if (!isSelectionMode) {
-        enterSelectionMode();
-        toggleVerseSelection(verseRef);
-        if (navigator.vibrate) navigator.vibrate(50);
-    }
-}
-
-function handleVerseTap(verseRef) {
-    if (isSelectionMode) {
-        toggleVerseSelection(verseRef);
-    }
-}
-
-function enterSelectionMode() {
-    isSelectionMode = true;
-    selectedVerseRefs.clear();
-    document.getElementById('selection-toolbar').classList.remove('hidden');
-}
-
-function exitSelectionMode() {
-    isSelectionMode = false;
-    selectedVerseRefs.clear();
-    document.getElementById('selection-toolbar').classList.add('hidden');
-    document.querySelectorAll('.chapter-verse.selected').forEach(el => el.classList.remove('selected'));
-}
-
-function toggleVerseSelection(ref) {
-    const verseId = `v-${ref.replace(/[^a-zA-Z0-9]/g, '-')}`;
-    const el = document.getElementById(verseId);
-    if (selectedVerseRefs.has(ref)) {
-        selectedVerseRefs.delete(ref);
-        if (el) el.classList.remove('selected');
-    } else {
-        selectedVerseRefs.add(ref);
-        if (el) el.classList.add('selected');
-    }
-    updateSelectionUI();
-}
-
-function updateSelectionUI() {
-    const count = selectedVerseRefs.size;
-    document.getElementById('selection-count').innerText = `${count} selected`;
-    if (count === 0) exitSelectionMode();
-}
-
-function copySelectedVerses() {
-    const sortedVerses = allVerses.filter(v => selectedVerseRefs.has(v.ref));
-    if (sortedVerses.length === 0) return;
-
-    const firstRefParts = sortedVerses[0].ref.split(':');
-    const bookAndChapter = firstRefParts[0];
-    const startNum = parseInt(firstRefParts[1]);
-    const endNum = parseInt(sortedVerses[sortedVerses.length - 1].ref.split(':')[1]);
-    
-    const rangeHeader = sortedVerses.length > 1 
-        ? `${bookAndChapter}:${startNum}-${endNum}` 
-        : sortedVerses[0].ref;
-
-    const bodyText = sortedVerses.map(v => {
-        const num = v.ref.split(':')[1];
-        return `${num} ${v.text}`;
-    }).join('\n\n');
-
-    const finalText = `"${rangeHeader}\n${bodyText}"`;
-    
-    navigator.clipboard.writeText(finalText).then(() => {
-        alert("Verses copied to clipboard!");
-        exitSelectionMode();
-    });
-}
-
-function saveSelectedVerses() {
-    const sortedVerses = allVerses.filter(v => selectedVerseRefs.has(v.ref));
-    if (sortedVerses.length === 0) return;
-
-    const firstVerse = sortedVerses[0];
-    const lastVerse = sortedVerses[sortedVerses.length - 1];
-    const isRange = sortedVerses.length > 1;
-    
-    let mergedRef = firstVerse.ref;
-    if (isRange) {
-        const parts = firstVerse.ref.split(':'); 
-        const endNum = lastVerse.ref.split(':')[1];
-        mergedRef = `${parts[0]}:${parts[1]}-${endNum}`;
-    }
-
-    const mergedText = sortedVerses.map(v => {
-        const num = v.ref.split(':')[1];
-        return `<b>${num}</b> ${v.text}`; 
-    }).join('\n\n');
-
-    const mergedObj = {
-        id: `merged-${Date.now()}`,
-        ref: mergedRef,
-        text: mergedText,
-        source: firstVerse.source,
-        chapterId: firstVerse.chapterId
-    };
-
-    if (!savedVerses.some(sv => sv.ref === mergedRef)) {
-        savedVerses.unshift(mergedObj);
-        saveToLocalStorage();
-        alert(`Saved bookmark: ${mergedRef}`);
-        if (isViewingBookmarks) showSavedVerses();
-    } else {
-        alert("This selection is already bookmarked.");
-    }
-    
-    exitSelectionMode();
-}
-
-function handleNavigation(direction) {
-    if (viewMode === 'verse') {
-        const newIndex = currentResultIndex + direction;
-        if (newIndex >= 0 && newIndex < currentSearchResults.length) {
-            currentResultIndex = newIndex;
-            openVerseView(currentSearchResults[newIndex], newIndex);
-        }
-    } else {
-        const newIndex = currentChapterIndex + direction;
-        if (newIndex >= 0 && newIndex < chapterList.length) {
-            currentChapterIndex = newIndex;
-            const newChapterId = chapterList[newIndex];
-            
-            const modalText = document.getElementById('modal-text');
-            modalText.style.opacity = 0;
-            setTimeout(() => { 
-                loadChapterContent(newChapterId);
-                modalText.style.opacity = 1; 
-            }, 150);
-        }
-    }
-}
+// --- 7. MODALS & NAV ---
 
 function openPopup(title, text) {
     const modalOverlay = document.getElementById('modal-overlay');
-    const modalRef = document.querySelector('.modal-ref');
-    const modalText = document.getElementById('modal-text');
-    const modalContent = document.querySelector('.modal-content');
-    const modalFooter = document.querySelector('.modal-footer') || createModalFooter();
+    const modalRef = modalOverlay.querySelector('.modal-ref'); // FIXED: Scoped
+    const modalText = modalOverlay.querySelector('.modal-body'); // FIXED: Scoped
+    const modalContent = modalOverlay.querySelector('.modal-content');
+    const modalFooter = modalOverlay.querySelector('.modal-footer') || createModalFooter(); // FIXED: Scoped
     
     viewMode = 'verse';
     modalContent.classList.add('short');
-    
     modalOverlay.classList.remove('hidden');
+    
     modalRef.innerText = title;
     modalText.innerText = text;
     modalFooter.innerHTML = '';
     
-    document.getElementById('prev-chapter-btn').classList.add('hidden');
-    document.getElementById('next-chapter-btn').classList.add('hidden');
+    modalOverlay.querySelector('#prev-chapter-btn').classList.add('hidden'); // FIXED
+    modalOverlay.querySelector('#next-chapter-btn').classList.add('hidden'); // FIXED
 }
 
 function openVerseView(verse, index) {
@@ -942,12 +748,12 @@ function openVerseView(verse, index) {
     currentResultIndex = index;
     
     const modalOverlay = document.getElementById('modal-overlay');
-    const modalRef = document.querySelector('.modal-ref');
-    const modalText = document.getElementById('modal-text');
-    const modalContent = document.querySelector('.modal-content');
-    const modalFooter = document.querySelector('.modal-footer') || createModalFooter();
-    const prevBtn = document.getElementById('prev-chapter-btn');
-    const nextBtn = document.getElementById('next-chapter-btn');
+    const modalRef = modalOverlay.querySelector('.modal-ref'); // FIXED
+    const modalText = modalOverlay.querySelector('.modal-body'); // FIXED
+    const modalContent = modalOverlay.querySelector('.modal-content');
+    const modalFooter = modalOverlay.querySelector('.modal-footer'); // FIXED
+    const prevBtn = modalOverlay.querySelector('#prev-chapter-btn'); // FIXED
+    const nextBtn = modalOverlay.querySelector('#next-chapter-btn'); // FIXED
 
     modalOverlay.classList.remove('hidden');
     modalContent.classList.add('short'); 
@@ -983,19 +789,20 @@ function viewChapter(chapterId, highlightRef = null) {
     currentChapterIndex = chapterList.indexOf(chapterId); 
     if (currentChapterIndex === -1) return;
     
-    const modalContent = document.querySelector('.modal-content');
+    const modalContent = document.querySelector('#modal-overlay .modal-content'); // FIXED
     modalContent.classList.remove('short'); 
     
     loadChapterContent(chapterId, highlightRef);
     
-    document.querySelector('.modal-footer').innerHTML = ''; 
+    document.querySelector('#modal-overlay .modal-footer').innerHTML = ''; 
 }
 
 function loadChapterContent(chapterId, highlightRef = null) {
-    const modalRef = document.querySelector('.modal-ref');
-    const modalText = document.getElementById('modal-text');
-    const prevBtn = document.getElementById('prev-chapter-btn');
-    const nextBtn = document.getElementById('next-chapter-btn');
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalRef = modalOverlay.querySelector('.modal-ref'); // FIXED
+    const modalText = modalOverlay.querySelector('.modal-body'); // FIXED
+    const prevBtn = modalOverlay.querySelector('#prev-chapter-btn'); // FIXED
+    const nextBtn = modalOverlay.querySelector('#next-chapter-btn'); // FIXED
     
     const chapterVerses = allVerses.filter(v => v.chapterId === chapterId);
     
@@ -1011,11 +818,12 @@ function loadChapterContent(chapterId, highlightRef = null) {
     modalRef.innerText = chapterId; 
     modalText.innerHTML = fullText; 
 
-    const headerRight = document.querySelector('.modal-header');
-    const existingSelBtn = document.querySelector('.desktop-select-btn-injected');
+    // Inject Desktop Select Button
+    const headerRight = modalOverlay.querySelector('.header-right'); // FIXED
+    const existingSelBtn = headerRight.querySelector('.desktop-select-btn-injected');
     if (existingSelBtn) existingSelBtn.remove();
 
-    const closeBtn = document.querySelector('.main-close');
+    const closeBtn = headerRight.querySelector('.main-close');
     const selectBtn = document.createElement('button');
     selectBtn.className = 'desktop-select-btn desktop-select-btn-injected';
     selectBtn.innerText = 'Select';
@@ -1051,4 +859,28 @@ function loadChapterContent(chapterId, highlightRef = null) {
     
     prevBtn.style.opacity = currentChapterIndex <= 0 ? '0.3' : '1';
     nextBtn.style.opacity = currentChapterIndex >= chapterList.length - 1 ? '0.3' : '1';
+}
+
+function handleNavigation(direction) {
+    if (viewMode === 'verse') {
+        const newIndex = currentResultIndex + direction;
+        if (newIndex >= 0 && newIndex < currentSearchResults.length) {
+            currentResultIndex = newIndex;
+            openVerseView(currentSearchResults[newIndex], newIndex);
+        }
+    } else {
+        const newIndex = currentChapterIndex + direction;
+        if (newIndex >= 0 && newIndex < chapterList.length) {
+            currentChapterIndex = newIndex;
+            const newChapterId = chapterList[newIndex];
+            
+            // FIXED: Scope search to avoid changing Ref Modal
+            const modalText = document.querySelector('#modal-overlay .modal-body');
+            modalText.style.opacity = 0;
+            setTimeout(() => { 
+                loadChapterContent(newChapterId);
+                modalText.style.opacity = 1; 
+            }, 150);
+        }
+    }
 }
