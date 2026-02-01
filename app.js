@@ -61,7 +61,7 @@ let longPressTimer = null;
 
 let refSearchRows = ["", "", "", "", ""]; 
 
-// --- 1. CORE UI HELPERS ---
+// --- CORE HELPER FUNCTIONS ---
 
 function updateStatus(msg) {
     const el = document.querySelector('.placeholder-msg');
@@ -113,13 +113,25 @@ function renderFilters() {
     filtersContainer.appendChild(refBtn);
 }
 
-// --- 2. INITIALIZATION ---
+function createModalFooter() {
+    // Only creates if missing in the specific context requested
+    const f = document.createElement('div');
+    f.className = 'modal-footer';
+    return f;
+}
+
+// --- INITIALIZATION ---
 
 document.addEventListener('DOMContentLoaded', async () => {
-    initSettings();
-    initUI();
-    loadSavedVerses();
-    await loadAllBooks();
+    try {
+        initSettings();
+        initUI();
+        loadSavedVerses();
+        await loadAllBooks();
+    } catch (e) {
+        console.error("Initialization Error:", e);
+        updateStatus("Error loading app: " + e.message);
+    }
 });
 
 function loadSavedVerses() {
@@ -194,7 +206,7 @@ function initUI() {
     if(copySel) copySel.onclick = copySelectedVerses;
     if(bookSel) bookSel.onclick = saveSelectedVerses;
 
-    // --- RE-BIND REFERENCE MODAL BUTTONS (FIX) ---
+    // --- RE-BIND REFERENCE MODAL BUTTONS (FIXED) ---
     const refModal = document.getElementById('ref-modal');
     const refClose = document.querySelector('.ref-close');
     const addRefBtn = document.getElementById('add-ref-btn');
@@ -237,7 +249,7 @@ function initUI() {
     if(nextBtn) nextBtn.onclick = () => handleNavigation(1);
 }
 
-// --- 3. DATA LOADING ---
+// --- DATA LOADING ---
 
 async function loadAllBooks() {
     updateStatus("Loading Library...");
@@ -306,7 +318,7 @@ function parseBookText(fullText, config, wordSet, chapterSet) {
     });
 }
 
-// --- 4. REFERENCE SEARCH LOGIC ---
+// --- REFERENCE SEARCH ---
 
 function openRefModal() {
     renderRefInputs();
@@ -373,8 +385,12 @@ function confirmClearRefs() {
 
 function expandAbbreviations(inputEl) {
     const val = inputEl.value.toLowerCase();
-    if (ABBREVIATIONS[val]) {
-        inputEl.value = ABBREVIATIONS[val] + " "; 
+    // Normalize to handle spaces
+    let key = val.trim();
+    
+    // Check if key exists in mapping
+    if (ABBREVIATIONS[key]) {
+        inputEl.value = ABBREVIATIONS[key] + " "; 
     }
 }
 
@@ -409,8 +425,8 @@ function performMultiRefSearch() {
     
     currentSearchResults = [];
     
-    // STRICT MATCH REGEX: Matches "Book Chapter:Verse" or "Book Chapter:Start-End"
-    // Does NOT match just "Book Chapter" (unless range is missing, but here we prioritize exactness)
+    // STRICT REGEX: Only Matches "Book Chapter:Verse" or Ranges.
+    // Explicitly ignores partial chapter matches unless user only typed "Book Chapter"
     const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
     const singleVerseRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)$/;
 
@@ -430,7 +446,6 @@ function performMultiRefSearch() {
             const endVerse = parseInt(rangeMatch[4]);
             
             batchResults = allVerses.filter(v => {
-                // Strict check: Book name start + Chapter num match
                 if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
                     const parts = v.ref.split(':');
                     if (parts.length > 1) {
@@ -442,29 +457,29 @@ function performMultiRefSearch() {
             });
         } 
         else if (singleMatch) {
-            // STRICT SINGLE VERSE
+            // STRICT MATCH: "2:1" should NOT match "2:10"
             const bookName = singleMatch[1].trim().toLowerCase();
             const chapterNum = singleMatch[2];
             const verseNum = parseInt(singleMatch[3]);
 
             batchResults = allVerses.filter(v => {
-                // Must start with "Book Chapter:"
                 if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
                     const parts = v.ref.split(':');
-                    // Must match Verse Number EXACTLY as integer (avoids 1 matching 10)
+                    // Check exact number match
                     return parseInt(parts[1]) === verseNum;
                 }
                 return false;
             });
         }
         else {
-            // Fallback: Chapter search (e.g. "1 Nephi 3")
+            // Fallback for just "1 Nephi 3" -> show whole chapter
             batchResults = allVerses.filter(v => v.ref.toLowerCase().startsWith(q.toLowerCase()));
         }
         
         currentSearchResults = [...currentSearchResults, ...batchResults];
     });
 
+    // Remove duplicates
     const uniqueIds = new Set();
     currentSearchResults = currentSearchResults.filter(v => {
         if (uniqueIds.has(v.ref)) return false;
@@ -480,7 +495,7 @@ function performMultiRefSearch() {
     }
 }
 
-// --- 5. STANDARD SEARCH ---
+// --- 5. SEARCH & RESULTS ---
 
 function performSearch(query) {
     if (isViewingBookmarks) {
@@ -496,7 +511,7 @@ function performSearch(query) {
     resultsArea.innerHTML = '';
     const q = query.toLowerCase().trim();
     
-    // Same Strict Logic for main search if it looks like a ref
+    // Apply strict matching logic to main search too if it looks like a ref
     const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
     const singleVerseRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)$/;
     
@@ -504,7 +519,6 @@ function performSearch(query) {
     const singleMatch = query.match(singleVerseRegex);
 
     if (rangeMatch || singleMatch) {
-        // Reuse strict logic from Multi-Ref (simplified here)
         currentSearchResults = allVerses.filter(v => {
             if (!activeCategories.has(v.source)) return false;
             
@@ -528,7 +542,6 @@ function performSearch(query) {
             return false;
         });
     } else {
-        // Text Search
         let refMatches = [];
         let textMatches = [];
         allVerses.forEach(v => {
@@ -760,10 +773,10 @@ function showConfirmation(msg, confirmCallback, cancelCallback = null) {
 
 function openPopup(title, text) {
     const modalOverlay = document.getElementById('modal-overlay');
-    const modalRef = modalOverlay.querySelector('.modal-ref'); // FIXED: Scoped
-    const modalText = modalOverlay.querySelector('.modal-body'); // FIXED: Scoped
+    const modalRef = modalOverlay.querySelector('.modal-ref');
+    const modalText = modalOverlay.querySelector('.modal-body');
     const modalContent = modalOverlay.querySelector('.modal-content');
-    const modalFooter = modalOverlay.querySelector('.modal-footer') || createModalFooter(); // FIXED: Scoped
+    const modalFooter = modalOverlay.querySelector('.modal-footer') || createModalFooter();
     
     viewMode = 'verse';
     modalContent.classList.add('short');
@@ -773,8 +786,8 @@ function openPopup(title, text) {
     modalText.innerText = text;
     modalFooter.innerHTML = '';
     
-    modalOverlay.querySelector('#prev-chapter-btn').classList.add('hidden'); // FIXED
-    modalOverlay.querySelector('#next-chapter-btn').classList.add('hidden'); // FIXED
+    modalOverlay.querySelector('#prev-chapter-btn').classList.add('hidden');
+    modalOverlay.querySelector('#next-chapter-btn').classList.add('hidden');
 }
 
 function openVerseView(verse, index) {
@@ -782,12 +795,20 @@ function openVerseView(verse, index) {
     currentResultIndex = index;
     
     const modalOverlay = document.getElementById('modal-overlay');
-    const modalRef = modalOverlay.querySelector('.modal-ref'); // FIXED
-    const modalText = modalOverlay.querySelector('.modal-body'); // FIXED
+    const modalRef = modalOverlay.querySelector('.modal-ref');
+    const modalText = modalOverlay.querySelector('.modal-body');
     const modalContent = modalOverlay.querySelector('.modal-content');
-    const modalFooter = modalOverlay.querySelector('.modal-footer'); // FIXED
-    const prevBtn = modalOverlay.querySelector('#prev-chapter-btn'); // FIXED
-    const nextBtn = modalOverlay.querySelector('#next-chapter-btn'); // FIXED
+    
+    // FIXED: Ensure we target the MAIN modal footer
+    let modalFooter = modalOverlay.querySelector('.modal-footer');
+    if (!modalFooter) {
+        modalFooter = document.createElement('div');
+        modalFooter.className = 'modal-footer';
+        modalContent.appendChild(modalFooter);
+    }
+
+    const prevBtn = modalOverlay.querySelector('#prev-chapter-btn');
+    const nextBtn = modalOverlay.querySelector('#next-chapter-btn');
 
     modalOverlay.classList.remove('hidden');
     modalContent.classList.add('short'); 
@@ -823,7 +844,7 @@ function viewChapter(chapterId, highlightRef = null) {
     currentChapterIndex = chapterList.indexOf(chapterId); 
     if (currentChapterIndex === -1) return;
     
-    const modalContent = document.querySelector('#modal-overlay .modal-content'); // FIXED
+    const modalContent = document.querySelector('#modal-overlay .modal-content');
     modalContent.classList.remove('short'); 
     
     loadChapterContent(chapterId, highlightRef);
@@ -833,10 +854,10 @@ function viewChapter(chapterId, highlightRef = null) {
 
 function loadChapterContent(chapterId, highlightRef = null) {
     const modalOverlay = document.getElementById('modal-overlay');
-    const modalRef = modalOverlay.querySelector('.modal-ref'); // FIXED
-    const modalText = modalOverlay.querySelector('.modal-body'); // FIXED
-    const prevBtn = modalOverlay.querySelector('#prev-chapter-btn'); // FIXED
-    const nextBtn = modalOverlay.querySelector('#next-chapter-btn'); // FIXED
+    const modalRef = modalOverlay.querySelector('.modal-ref');
+    const modalText = modalOverlay.querySelector('.modal-body');
+    const prevBtn = modalOverlay.querySelector('#prev-chapter-btn');
+    const nextBtn = modalOverlay.querySelector('#next-chapter-btn');
     
     const chapterVerses = allVerses.filter(v => v.chapterId === chapterId);
     
@@ -852,8 +873,7 @@ function loadChapterContent(chapterId, highlightRef = null) {
     modalRef.innerText = chapterId; 
     modalText.innerHTML = fullText; 
 
-    // Inject Desktop Select Button
-    const headerRight = modalOverlay.querySelector('.header-right'); // FIXED
+    const headerRight = modalOverlay.querySelector('.header-right');
     const existingSelBtn = headerRight.querySelector('.desktop-select-btn-injected');
     if (existingSelBtn) existingSelBtn.remove();
 
@@ -908,7 +928,6 @@ function handleNavigation(direction) {
             currentChapterIndex = newIndex;
             const newChapterId = chapterList[newIndex];
             
-            // FIXED: Scope search to avoid changing Ref Modal
             const modalText = document.querySelector('#modal-overlay .modal-body');
             modalText.style.opacity = 0;
             setTimeout(() => { 
