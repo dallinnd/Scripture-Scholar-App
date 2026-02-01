@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Your Scripture Helper</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="theme-light-blue">
+
+  <div class="app-container">
+    <header>
+      <div class="header-top">
+        <h1>Scripture Helper</h1>
+        <div class="header-actions">
+          <button id="bookmarks-btn" aria-label="Saved Scriptures" class="icon-btn">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+          </button>
+          <button id="settings-btn" aria-label="Settings" class="icon-btn">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </button>
+        </div>
+      </div>
+      
+      <div id="category-filters" class="filters-container"></div>
+      
+      <div id="bookmarks-title" class="bookmarks-header hidden">Bookmarked Scriptures</div>
+    </header>
+
+    <div id="search-container" class="search-section">
+      <div class="input-wrapper">
+        <input type="text" id="search-input" placeholder="Search scriptures..." autocomplete="off">
+        <button id="send-btn">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        </button>
+      </div>
+      <div id="suggestions-area" class="pills-container"></div>
+    </div>
+
+    <div id="results-area" class="results-list">
+      <div class="placeholder-msg">Initializing Library...</div>
+    </div>
+
+    <footer>
+      <a href="#" id="legal-link">Legal Disclosure</a>
+    </footer>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal-content">
+      
+      <div id="selection-toolbar" class="selection-toolbar hidden">
+        <span id="selection-count">0 selected</span>
+        <div class="selection-actions">
+          <button id="sel-copy-btn" class="sel-btn" aria-label="Copy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          </button>
+          <button id="sel-bookmark-btn" class="sel-btn" aria-label="Bookmark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+          </button>
+          <button id="sel-close-btn" class="sel-btn close-sel" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="modal-header">
+        <div class="header-left">
+          <button id="prev-chapter-btn" class="nav-arrow hidden">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <button id="next-chapter-btn" class="nav-arrow hidden">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+          <span class="modal-ref">Scripture View</span>
+        </div>
+        <button class="close-btn main-close">&times;</button>
+      </div>
+      <div id="modal-text" class="modal-body"></div>
+      <div class="modal-footer"></div>
+    </div>
+  </div>
+
+  <div id="settings-overlay" class="modal-overlay hidden">
+    <div class="modal-content settings-content">
+      <div class="modal-header">
+        <span class="modal-ref">Select Theme</span>
+        <button class="close-btn settings-close">&times;</button>
+      </div>
+      <div class="modal-body settings-body">
+        <div class="theme-grid">
+          <button class="theme-btn" data-theme="theme-light-blue" style="background:#fff; color:#2563eb; border-color:#2563eb;">Light Blue</button>
+          <button class="theme-btn" data-theme="theme-light-sepia" style="background:#fdf6e3; color:#15803d; border-color:#d3c6aa;">Sepia</button>
+          <button class="theme-btn" data-theme="theme-dark-grey" style="background:#1e293b; color:#fff; border-color:#475569;">Dark Grey</button>
+          <button class="theme-btn" data-theme="theme-dark-black" style="background:#000000; color:#e5e5e5; border-color:#333;">OLED Black</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirm-overlay" class="modal-overlay hidden" style="z-index: 2000;">
+    <div class="modal-content confirm-content">
+      <div class="modal-header" style="justify-content:center;">
+        <span class="modal-ref">Confirmation</span>
+      </div>
+      <div class="modal-body" style="text-align: center;">
+        <p id="confirm-msg" style="margin-bottom: 20px;">Are you sure?</p>
+        <div style="display:flex; gap:10px;">
+          <button id="confirm-cancel" class="action-btn">Cancel</button>
+          <button id="confirm-yes" class="action-btn filled" style="background:#ef4444; border-color:#ef4444;">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(console.error);
+    }
+  </script>
+</body>
+</html>
