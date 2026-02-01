@@ -1,4 +1,4 @@
-/* ... Variables and Themes (Unchanged) ... */
+/* ... Variables and Themes ... */
 :root {
   --primary: #2563eb;
   --bg: #f8fafc;
@@ -47,23 +47,71 @@ input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px r
 .bookmarks-header.hidden { display: none; }
 .hidden { display: none !important; }
 
-/* --- VERSE BOX (FIXED TAP HIGHLIGHT) --- */
-.verse-box { 
-    background: var(--bg); border: 1px solid var(--border); padding: 15px; 
-    border-radius: 16px; cursor: pointer; 
-    transition: transform 0.2s, background-color 0.2s; 
-    min-height: 100px; height: auto; 
-    display: flex; flex-direction: column; justify-content: flex-start; 
-    position: relative; overflow: hidden; 
-    
-    /* Removes the native grey tap box on mobile */
-    -webkit-tap-highlight-color: transparent; 
+/* --- REFERENCE SEARCH MODAL STYLES --- */
+.ref-inputs-container {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 15px;
+    padding-right: 5px; /* space for scrollbar */
 }
+
+/* Ghost Text Wrapper */
+.ref-input-wrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.ref-input {
+    width: 100%;
+    padding: 12px 15px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    font-size: 1rem;
+    outline: none;
+    background: transparent; /* Transparent so we see nothing behind except container bg */
+    color: var(--text);
+    z-index: 2; /* Sit on top of ghost text */
+    position: relative;
+}
+.ref-input:focus { border-color: var(--primary); }
+
+.ghost-text {
+    position: absolute;
+    top: 50%; left: 16px; /* Match padding of input */
+    transform: translateY(-50%);
+    font-size: 1rem;
+    color: var(--text-light);
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: 1; /* Sit behind input */
+    white-space: pre;
+}
+
+.add-ref-btn {
+    align-self: center;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px dashed var(--text-light);
+    color: var(--text-light);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: 0.2s;
+}
+.add-ref-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+/* --- VERSE BOX --- */
+.verse-box { background: var(--bg); border: 1px solid var(--border); padding: 15px; border-radius: 16px; cursor: pointer; transition: transform 0.2s, background-color 0.2s; min-height: 100px; height: auto; display: flex; flex-direction: column; justify-content: flex-start; position: relative; overflow: hidden; -webkit-tap-highlight-color: transparent; }
 .verse-box:active { transform: scale(0.98); }
 .verse-ref { font-weight: 700; color: var(--primary); font-size: 0.95rem; margin-bottom: 8px; line-height: 1.2; display: block; }
 .verse-snippet { color: var(--text-light); font-size: 0.95rem; line-height: 1.5; flex: 1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
 
-/* ... (Keep Selection Toolbar, Modal, Desktop styles, etc.) ... */
+/* ... (Keep Selection Toolbar, Modal, Desktop styles) ... */
 .selection-toolbar { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 50px; padding: 8px 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 15px; z-index: 500; width: auto; min-width: 200px; justify-content: space-between; animation: slideDown 0.2s ease-out; }
 .selection-toolbar.hidden { display: none; }
 @keyframes slideDown { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
