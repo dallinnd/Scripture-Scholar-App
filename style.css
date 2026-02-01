@@ -1,4 +1,4 @@
-/* ... Variables and Themes ... */
+/* ... Variables and Themes (Unchanged) ... */
 :root {
   --primary: #2563eb;
   --bg: #f8fafc;
@@ -19,7 +19,7 @@ body.theme-dark-black { --primary: #d4d4d4; --bg: #000000; --surface: #121212; -
 * { box-sizing: border-box; }
 body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; transition: background 0.3s, color 0.3s; }
 
-/* ... Header, Search, Layout ... */
+/* ... Header & Search ... */
 header { padding: 15px; border-bottom: 1px solid var(--border); background: var(--surface); }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 header h1 { margin: 0; font-size: 1.25rem; color: var(--primary); font-weight: 700; }
@@ -47,71 +47,46 @@ input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px r
 .bookmarks-header.hidden { display: none; }
 .hidden { display: none !important; }
 
-/* --- REFERENCE SEARCH MODAL STYLES --- */
-.ref-inputs-container {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 15px;
-    padding-right: 5px; /* space for scrollbar */
-}
-
-/* Ghost Text Wrapper */
-.ref-input-wrapper {
-    position: relative;
-    width: 100%;
-    display: flex;
-    align-items: center;
-}
-
-.ref-input {
-    width: 100%;
-    padding: 12px 15px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    font-size: 1rem;
-    outline: none;
-    background: transparent; /* Transparent so we see nothing behind except container bg */
-    color: var(--text);
-    z-index: 2; /* Sit on top of ghost text */
-    position: relative;
-}
+/* ... Reference Search ... */
+.ref-inputs-container { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px; padding-right: 5px; }
+.ref-input-wrapper { position: relative; width: 100%; display: flex; align-items: center; }
+.ref-input { width: 100%; padding: 12px 15px; border-radius: 12px; border: 1px solid var(--border); font-size: 1rem; outline: none; background: transparent; color: var(--text); z-index: 2; position: relative; }
 .ref-input:focus { border-color: var(--primary); }
-
-.ghost-text {
-    position: absolute;
-    top: 50%; left: 16px; /* Match padding of input */
-    transform: translateY(-50%);
-    font-size: 1rem;
-    color: var(--text-light);
-    opacity: 0.5;
-    pointer-events: none;
-    z-index: 1; /* Sit behind input */
-    white-space: pre;
-}
-
-.add-ref-btn {
-    align-self: center;
-    width: 40px; height: 40px;
-    border-radius: 50%;
-    background: var(--bg);
-    border: 1px dashed var(--text-light);
-    color: var(--text-light);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    transition: 0.2s;
-}
+.ghost-text { position: absolute; top: 50%; left: 16px; transform: translateY(-50%); font-size: 1rem; color: var(--text-light); opacity: 0.5; pointer-events: none; z-index: 1; white-space: pre; }
+.add-ref-btn { align-self: center; width: 40px; height: 40px; border-radius: 50%; background: var(--bg); border: 1px dashed var(--text-light); color: var(--text-light); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
 .add-ref-btn:hover { border-color: var(--primary); color: var(--primary); }
 
-/* --- VERSE BOX --- */
+/* ... Verse Box ... */
 .verse-box { background: var(--bg); border: 1px solid var(--border); padding: 15px; border-radius: 16px; cursor: pointer; transition: transform 0.2s, background-color 0.2s; min-height: 100px; height: auto; display: flex; flex-direction: column; justify-content: flex-start; position: relative; overflow: hidden; -webkit-tap-highlight-color: transparent; }
 .verse-box:active { transform: scale(0.98); }
 .verse-ref { font-weight: 700; color: var(--primary); font-size: 0.95rem; margin-bottom: 8px; line-height: 1.2; display: block; }
 .verse-snippet { color: var(--text-light); font-size: 0.95rem; line-height: 1.5; flex: 1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
 
-/* ... (Keep Selection Toolbar, Modal, Desktop styles) ... */
+/* ... Modal Styles ... */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 1; transition: opacity 0.3s; }
+.modal-overlay.hidden { opacity: 0; pointer-events: none; }
+.modal-content { background: var(--surface); width: 95%; max-width: 600px; height: 90vh; border-radius: 24px; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.5); transform: translateY(0); transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); position: relative; }
+.modal-overlay.hidden .modal-content { transform: translateY(50px); }
+.modal-content.short { height: 60vh; }
+
+/* Ensure Ref Title Stays at Top */
+.modal-header { padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; z-index: 10; flex-shrink: 0; }
+.header-left { display: flex; align-items: center; gap: 5px; flex: 1; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.modal-ref { font-weight: 700; color: var(--text); font-size: 1.1rem; }
+
+.modal-body { padding: 25px; overflow-y: auto; flex: 1; font-size: 1.15rem; line-height: 1.6; color: var(--text); white-space: pre-wrap; transition: opacity 0.2s; }
+
+/* Footer Buttons at Bottom */
+.modal-footer { padding: 15px; border-top: 1px solid var(--border); display: flex; flex-direction: row; gap: 15px; align-items: center; flex-shrink: 0; }
+
+.action-btn { background: var(--bg); border: 1px solid var(--border); color: var(--primary); padding: 12px 20px; border-radius: 50px; font-weight: 600; cursor: pointer; flex: 1; text-align: center; }
+.action-btn.filled { background: var(--primary); color: white; border-color: var(--primary); }
+.save-icon-btn { width: 48px; height: 48px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); color: var(--text-light); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: 0.2s; }
+.save-icon-btn.saved { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+.save-icon-btn svg { width: 24px; height: 24px; }
+
+/* ... Selection & Misc ... */
 .selection-toolbar { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 50px; padding: 8px 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 15px; z-index: 500; width: auto; min-width: 200px; justify-content: space-between; animation: slideDown 0.2s ease-out; }
 .selection-toolbar.hidden { display: none; }
 @keyframes slideDown { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -124,23 +99,9 @@ input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px r
 .chapter-verse { margin-bottom: 12px; line-height: 1.6; padding: 8px; border-radius: 8px; transition: background-color 0.2s; user-select: none; -webkit-user-select: none; cursor: pointer; }
 .chapter-verse:last-child { margin-bottom: 0; }
 .chapter-verse.selected { background-color: var(--selection-bg); border-left: 3px solid var(--primary); }
-.modal-header { padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; z-index: 10; }
-.header-left { display: flex; align-items: center; gap: 5px; flex: 1; }
-.header-right { display: flex; align-items: center; gap: 10px; } 
 .desktop-select-btn { display: none; font-size: 0.85rem; font-weight: 600; color: var(--primary); background: var(--bg); border: 1px solid var(--primary); padding: 6px 12px; border-radius: 20px; cursor: pointer; transition: 0.2s; }
 .desktop-select-btn:hover { background: var(--primary); color: white; }
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 1; transition: opacity 0.3s; }
-.modal-overlay.hidden { opacity: 0; pointer-events: none; }
-.modal-content { background: var(--surface); width: 95%; max-width: 600px; height: 90vh; border-radius: 24px; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.5); transform: translateY(0); transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); position: relative; }
-.modal-overlay.hidden .modal-content { transform: translateY(50px); }
-.modal-content.short { height: 60vh; }
 .highlight-verse { background-color: var(--highlight); padding: 2px 5px; border-radius: 4px; transition: background 1s; }
-.modal-footer { padding: 15px; border-top: 1px solid var(--border); display: flex; flex-direction: row; gap: 15px; align-items: center; }
-.action-btn { background: var(--bg); border: 1px solid var(--border); color: var(--primary); padding: 12px 20px; border-radius: 50px; font-weight: 600; cursor: pointer; flex: 1; text-align: center; }
-.action-btn.filled { background: var(--primary); color: white; border-color: var(--primary); }
-.save-icon-btn { width: 48px; height: 48px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); color: var(--text-light); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: 0.2s; }
-.save-icon-btn.saved { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-.save-icon-btn svg { width: 24px; height: 24px; }
 .delete-btn-desktop { display: none; position: absolute; bottom: 10px; right: 10px; width: 32px; height: 32px; background-color: #ef4444; color: white; border: none; border-radius: 50%; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 5; transition: transform 0.2s; }
 .delete-btn-desktop:hover { transform: scale(1.1); }
 .delete-btn-desktop svg { width: 18px; height: 18px; display: block; }
@@ -150,15 +111,12 @@ input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px r
 .nav-arrow.hidden { display: none; }
 .nav-arrow svg { width: 24px; height: 24px; display: block; }
 .close-btn { background: none; border: none; font-size: 2rem; cursor: pointer; color: var(--text-light); line-height: 1; z-index: 100; position: relative; }
-.modal-ref { font-weight: 700; color: var(--text); font-size: 1.1rem; }
-.modal-body { padding: 25px; overflow-y: auto; flex: 1; font-size: 1.15rem; line-height: 1.6; color: var(--text); white-space: pre-wrap; transition: opacity 0.2s; }
 .settings-content { height: auto !important; max-height: 50vh; }
 .settings-body { padding: 20px; display: flex; align-items: center; }
 .theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
 .theme-btn { padding: 15px; border-radius: 12px; border: 2px solid transparent; font-weight: 600; cursor: pointer; transition: transform 0.1s; }
 footer { padding: 15px; text-align: center; border-top: 1px solid var(--border); background: var(--bg); }
 
-/* Desktop */
 @media (min-width: 768px) {
     .app-container { max-width: 1200px; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
     .results-list { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: min-content; align-content: start; gap: 15px; }
