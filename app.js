@@ -24,6 +24,8 @@ const BOOKS_CONFIG = [
 
 const ABBREVIATIONS = {
     "d&c": "Doctrine and Covenants",
+    "d & c": "Doctrine and Covenants",
+    "doctrine & covenants": "Doctrine and Covenants",
     "1 ne": "1 Nephi",
     "2 ne": "2 Nephi",
     "3 ne": "3 Nephi",
@@ -192,7 +194,7 @@ function initUI() {
     if(copySel) copySel.onclick = copySelectedVerses;
     if(bookSel) bookSel.onclick = saveSelectedVerses;
 
-    // Ref Modal Buttons
+    // --- RE-BIND REFERENCE MODAL BUTTONS (FIX) ---
     const refModal = document.getElementById('ref-modal');
     const refClose = document.querySelector('.ref-close');
     const addRefBtn = document.getElementById('add-ref-btn');
@@ -255,7 +257,6 @@ async function loadAllBooks() {
 
     BOOKS_CONFIG.forEach(config => {
         config.books.forEach(b => tempBooks.add(b));
-        
         const text = loadedFiles[config.file];
         if (text) parseBookText(text, config, tempWords, tempChapters);
     });
@@ -408,24 +409,29 @@ function performMultiRefSearch() {
     
     currentSearchResults = [];
     
+    // STRICT MATCH REGEX: Matches "Book Chapter:Verse" or "Book Chapter:Start-End"
+    // Does NOT match just "Book Chapter" (unless range is missing, but here we prioritize exactness)
     const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
+    const singleVerseRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)$/;
 
     refSearchRows.forEach(query => {
         if (!query.trim()) return;
-        const q = query.trim().toLowerCase();
+        const q = query.trim();
         
         let batchResults = [];
 
         const rangeMatch = q.match(rangeRegex);
+        const singleMatch = q.match(singleVerseRegex);
+
         if (rangeMatch) {
-            const bookName = rangeMatch[1].trim();
+            const bookName = rangeMatch[1].trim().toLowerCase();
             const chapterNum = rangeMatch[2];
             const startVerse = parseInt(rangeMatch[3]);
             const endVerse = parseInt(rangeMatch[4]);
             
             batchResults = allVerses.filter(v => {
-                const vRefLower = v.ref.toLowerCase();
-                if (vRefLower.startsWith(`${bookName} ${chapterNum}:`)) {
+                // Strict check: Book name start + Chapter num match
+                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
                     const parts = v.ref.split(':');
                     if (parts.length > 1) {
                         const vNum = parseInt(parts[1]);
@@ -435,8 +441,25 @@ function performMultiRefSearch() {
                 return false;
             });
         } 
+        else if (singleMatch) {
+            // STRICT SINGLE VERSE
+            const bookName = singleMatch[1].trim().toLowerCase();
+            const chapterNum = singleMatch[2];
+            const verseNum = parseInt(singleMatch[3]);
+
+            batchResults = allVerses.filter(v => {
+                // Must start with "Book Chapter:"
+                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
+                    const parts = v.ref.split(':');
+                    // Must match Verse Number EXACTLY as integer (avoids 1 matching 10)
+                    return parseInt(parts[1]) === verseNum;
+                }
+                return false;
+            });
+        }
         else {
-            batchResults = allVerses.filter(v => v.ref.toLowerCase().startsWith(q));
+            // Fallback: Chapter search (e.g. "1 Nephi 3")
+            batchResults = allVerses.filter(v => v.ref.toLowerCase().startsWith(q.toLowerCase()));
         }
         
         currentSearchResults = [...currentSearchResults, ...batchResults];
@@ -457,7 +480,7 @@ function performMultiRefSearch() {
     }
 }
 
-// --- 5. SEARCH ---
+// --- 5. STANDARD SEARCH ---
 
 function performSearch(query) {
     if (isViewingBookmarks) {
@@ -473,28 +496,39 @@ function performSearch(query) {
     resultsArea.innerHTML = '';
     const q = query.toLowerCase().trim();
     
+    // Same Strict Logic for main search if it looks like a ref
     const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
+    const singleVerseRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)$/;
+    
     const rangeMatch = query.match(rangeRegex);
+    const singleMatch = query.match(singleVerseRegex);
 
-    if (rangeMatch) {
-        const bookName = rangeMatch[1].trim().toLowerCase();
-        const chapterNum = rangeMatch[2];
-        const startVerse = parseInt(rangeMatch[3]);
-        const endVerse = parseInt(rangeMatch[4]);
-        
+    if (rangeMatch || singleMatch) {
+        // Reuse strict logic from Multi-Ref (simplified here)
         currentSearchResults = allVerses.filter(v => {
             if (!activeCategories.has(v.source)) return false;
-            const vRefLower = v.ref.toLowerCase();
-            if (vRefLower.startsWith(`${bookName} ${chapterNum}:`)) {
-                const parts = v.ref.split(':');
-                if (parts.length > 1) {
-                    const vNum = parseInt(parts[1]);
+            
+            if (rangeMatch) {
+                const bookName = rangeMatch[1].trim().toLowerCase();
+                const chapterNum = rangeMatch[2];
+                const startVerse = parseInt(rangeMatch[3]);
+                const endVerse = parseInt(rangeMatch[4]);
+                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
+                    const vNum = parseInt(v.ref.split(':')[1]);
                     return vNum >= startVerse && vNum <= endVerse;
+                }
+            } else if (singleMatch) {
+                const bookName = singleMatch[1].trim().toLowerCase();
+                const chapterNum = singleMatch[2];
+                const verseNum = parseInt(singleMatch[3]);
+                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
+                    return parseInt(v.ref.split(':')[1]) === verseNum;
                 }
             }
             return false;
         });
     } else {
+        // Text Search
         let refMatches = [];
         let textMatches = [];
         allVerses.forEach(v => {
