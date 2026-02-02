@@ -61,7 +61,7 @@ let longPressTimer = null;
 
 let refSearchRows = ["", "", "", "", ""]; 
 
-// --- CORE HELPER FUNCTIONS ---
+// --- 1. CORE LOGIC & HELPERS ---
 
 function updateStatus(msg) {
     const el = document.querySelector('.placeholder-msg');
@@ -114,13 +114,296 @@ function renderFilters() {
 }
 
 function createModalFooter() {
-    // Only creates if missing in the specific context requested
     const f = document.createElement('div');
     f.className = 'modal-footer';
     return f;
 }
 
-// --- INITIALIZATION ---
+// --- 2. MULTI-SELECT LOGIC (Must be defined before initUI) ---
+
+function enterSelectionMode() {
+    isSelectionMode = true;
+    selectedVerseRefs.clear();
+    document.getElementById('selection-toolbar').classList.remove('hidden');
+}
+
+function exitSelectionMode() {
+    isSelectionMode = false;
+    selectedVerseRefs.clear();
+    document.getElementById('selection-toolbar').classList.add('hidden');
+    document.querySelectorAll('.chapter-verse.selected').forEach(el => el.classList.remove('selected'));
+}
+
+function toggleVerseSelection(ref) {
+    const verseId = `v-${ref.replace(/[^a-zA-Z0-9]/g, '-')}`;
+    const el = document.getElementById(verseId);
+    
+    if (selectedVerseRefs.has(ref)) {
+        selectedVerseRefs.delete(ref);
+        if (el) el.classList.remove('selected');
+    } else {
+        selectedVerseRefs.add(ref);
+        if (el) el.classList.add('selected');
+    }
+    
+    updateSelectionUI();
+}
+
+function updateSelectionUI() {
+    const count = selectedVerseRefs.size;
+    document.getElementById('selection-count').innerText = `${count} selected`;
+    if (count === 0) exitSelectionMode();
+}
+
+function copySelectedVerses() {
+    const sortedVerses = allVerses.filter(v => selectedVerseRefs.has(v.ref));
+    if (sortedVerses.length === 0) return;
+
+    const firstRefParts = sortedVerses[0].ref.split(':');
+    const bookAndChapter = firstRefParts[0];
+    const startNum = parseInt(firstRefParts[1]);
+    const endNum = parseInt(sortedVerses[sortedVerses.length - 1].ref.split(':')[1]);
+    
+    const rangeHeader = sortedVerses.length > 1 
+        ? `${bookAndChapter}:${startNum}-${endNum}` 
+        : sortedVerses[0].ref;
+
+    const bodyText = sortedVerses.map(v => {
+        const num = v.ref.split(':')[1];
+        return `${num} ${v.text}`;
+    }).join('\n\n');
+
+    const finalText = `"${rangeHeader}\n${bodyText}"`;
+    
+    navigator.clipboard.writeText(finalText).then(() => {
+        alert("Verses copied to clipboard!");
+        exitSelectionMode();
+    });
+}
+
+function saveSelectedVerses() {
+    const sortedVerses = allVerses.filter(v => selectedVerseRefs.has(v.ref));
+    if (sortedVerses.length === 0) return;
+
+    const firstVerse = sortedVerses[0];
+    const lastVerse = sortedVerses[sortedVerses.length - 1];
+    const isRange = sortedVerses.length > 1;
+    
+    let mergedRef = firstVerse.ref;
+    if (isRange) {
+        const parts = firstVerse.ref.split(':'); 
+        const endNum = lastVerse.ref.split(':')[1];
+        mergedRef = `${parts[0]}:${parts[1]}-${endNum}`;
+    }
+
+    const mergedText = sortedVerses.map(v => {
+        const num = v.ref.split(':')[1];
+        return `<b>${num}</b> ${v.text}`; 
+    }).join('\n\n');
+
+    const mergedObj = {
+        id: `merged-${Date.now()}`,
+        ref: mergedRef,
+        text: mergedText,
+        source: firstVerse.source,
+        chapterId: firstVerse.chapterId
+    };
+
+    if (!savedVerses.some(sv => sv.ref === mergedRef)) {
+        savedVerses.unshift(mergedObj);
+        saveToLocalStorage();
+        alert(`Saved bookmark: ${mergedRef}`);
+        if (isViewingBookmarks) showSavedVerses();
+    } else {
+        alert("This selection is already bookmarked.");
+    }
+    
+    exitSelectionMode();
+}
+
+function handleLongPress(verseRef) {
+    if (viewMode !== 'chapter') return;
+    if (!isSelectionMode) {
+        enterSelectionMode();
+        toggleVerseSelection(verseRef);
+        if (navigator.vibrate) navigator.vibrate(50);
+    }
+}
+
+function handleVerseTap(verseRef) {
+    if (isSelectionMode) {
+        toggleVerseSelection(verseRef);
+    }
+}
+
+// --- 3. REFERENCE SEARCH LOGIC ---
+
+function openRefModal() {
+    renderRefInputs();
+    document.getElementById('ref-modal').classList.remove('hidden');
+}
+
+function renderRefInputs() {
+    const container = document.getElementById('ref-inputs-container');
+    container.innerHTML = '';
+    
+    refSearchRows.forEach((val, idx) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ref-input-wrapper';
+        
+        const ghost = document.createElement('span');
+        ghost.className = 'ghost-text';
+        ghost.id = `ghost-${idx}`;
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'ref-input';
+        input.value = val;
+        input.placeholder = `Reference ${idx + 1}`;
+        input.autocomplete = "off";
+        
+        input.addEventListener('input', (e) => {
+            refSearchRows[idx] = e.target.value;
+            expandAbbreviations(e.target); 
+            handleGhostText(e.target, ghost);
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab' || e.key === 'ArrowRight') {
+                acceptGhostText(input, ghost);
+            }
+        });
+
+        let touchStartX = 0;
+        input.addEventListener('touchstart', (e) => touchStartX = e.changedTouches[0].screenX, {passive: true});
+        input.addEventListener('touchend', (e) => {
+            const dist = e.changedTouches[0].screenX - touchStartX;
+            if (dist > 30) acceptGhostText(input, ghost); 
+        }, {passive: true});
+
+        wrapper.appendChild(ghost);
+        wrapper.appendChild(input);
+        container.appendChild(wrapper);
+    });
+}
+
+function addReferenceRow() {
+    if (refSearchRows.length < 20) {
+        refSearchRows.push("");
+        renderRefInputs();
+    }
+}
+
+function confirmClearRefs() {
+    showConfirmation("Clear all reference inputs?", () => {
+        refSearchRows = ["", "", "", "", ""]; 
+        renderRefInputs();
+    });
+}
+
+function expandAbbreviations(inputEl) {
+    const val = inputEl.value.toLowerCase();
+    let key = val.trim();
+    if (ABBREVIATIONS[key]) {
+        inputEl.value = ABBREVIATIONS[key] + " "; 
+    }
+}
+
+function handleGhostText(inputEl, ghostEl) {
+    const val = inputEl.value;
+    ghostEl.innerText = ""; 
+    
+    if (val.length < 2) return; 
+
+    const match = allBookNames.find(book => book.toLowerCase().startsWith(val.toLowerCase()));
+    
+    if (match) {
+        ghostEl.innerText = match;
+    }
+}
+
+function acceptGhostText(inputEl, ghostEl) {
+    if (ghostEl.innerText && ghostEl.innerText.length > inputEl.value.length) {
+        inputEl.value = ghostEl.innerText + " "; 
+        ghostEl.innerText = "";
+        refSearchRows[refSearchRows.indexOf(inputEl.value.trim())] = inputEl.value; 
+        inputEl.dispatchEvent(new Event('input'));
+    }
+}
+
+function performMultiRefSearch() {
+    document.getElementById('ref-modal').classList.add('hidden');
+    isViewingBookmarks = false;
+    
+    const resultsArea = document.getElementById('results-area');
+    resultsArea.innerHTML = '';
+    
+    currentSearchResults = [];
+    
+    const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
+    const singleVerseRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)$/;
+
+    refSearchRows.forEach(query => {
+        if (!query.trim()) return;
+        const q = query.trim();
+        let batchResults = [];
+
+        const rangeMatch = q.match(rangeRegex);
+        const singleMatch = q.match(singleVerseRegex);
+
+        if (rangeMatch) {
+            const bookName = rangeMatch[1].trim().toLowerCase();
+            const chapterNum = rangeMatch[2];
+            const startVerse = parseInt(rangeMatch[3]);
+            const endVerse = parseInt(rangeMatch[4]);
+            
+            batchResults = allVerses.filter(v => {
+                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
+                    const parts = v.ref.split(':');
+                    if (parts.length > 1) {
+                        const vNum = parseInt(parts[1]);
+                        return vNum >= startVerse && vNum <= endVerse;
+                    }
+                }
+                return false;
+            });
+        } 
+        else if (singleMatch) {
+            const bookName = singleMatch[1].trim().toLowerCase();
+            const chapterNum = singleMatch[2];
+            const verseNum = parseInt(singleMatch[3]);
+
+            batchResults = allVerses.filter(v => {
+                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
+                    const parts = v.ref.split(':');
+                    return parseInt(parts[1]) === verseNum;
+                }
+                return false;
+            });
+        }
+        else {
+            batchResults = allVerses.filter(v => v.ref.toLowerCase().startsWith(q.toLowerCase()));
+        }
+        
+        currentSearchResults = [...currentSearchResults, ...batchResults];
+    });
+
+    const uniqueIds = new Set();
+    currentSearchResults = currentSearchResults.filter(v => {
+        if (uniqueIds.has(v.ref)) return false;
+        uniqueIds.add(v.ref);
+        return true;
+    });
+
+    if (currentSearchResults.length === 0) {
+        resultsArea.innerHTML = '<div class="placeholder-msg full-width-header">No matches found.</div>';
+    } else {
+        renderedCount = 0;
+        renderNextBatch(""); 
+    }
+}
+
+// --- 4. INITIALIZATION ---
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -206,7 +489,7 @@ function initUI() {
     if(copySel) copySel.onclick = copySelectedVerses;
     if(bookSel) bookSel.onclick = saveSelectedVerses;
 
-    // --- RE-BIND REFERENCE MODAL BUTTONS (FIXED) ---
+    // Ref Modal Buttons
     const refModal = document.getElementById('ref-modal');
     const refClose = document.querySelector('.ref-close');
     const addRefBtn = document.getElementById('add-ref-btn');
@@ -249,7 +532,7 @@ function initUI() {
     if(nextBtn) nextBtn.onclick = () => handleNavigation(1);
 }
 
-// --- DATA LOADING ---
+// --- 5. DATA LOADING ---
 
 async function loadAllBooks() {
     updateStatus("Loading Library...");
@@ -318,184 +601,7 @@ function parseBookText(fullText, config, wordSet, chapterSet) {
     });
 }
 
-// --- REFERENCE SEARCH ---
-
-function openRefModal() {
-    renderRefInputs();
-    document.getElementById('ref-modal').classList.remove('hidden');
-}
-
-function renderRefInputs() {
-    const container = document.getElementById('ref-inputs-container');
-    container.innerHTML = '';
-    
-    refSearchRows.forEach((val, idx) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'ref-input-wrapper';
-        
-        const ghost = document.createElement('span');
-        ghost.className = 'ghost-text';
-        ghost.id = `ghost-${idx}`;
-        
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'ref-input';
-        input.value = val;
-        input.placeholder = `Reference ${idx + 1}`;
-        input.autocomplete = "off";
-        
-        input.addEventListener('input', (e) => {
-            refSearchRows[idx] = e.target.value;
-            expandAbbreviations(e.target); 
-            handleGhostText(e.target, ghost);
-        });
-
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Tab' || e.key === 'ArrowRight') {
-                acceptGhostText(input, ghost);
-            }
-        });
-
-        let touchStartX = 0;
-        input.addEventListener('touchstart', (e) => touchStartX = e.changedTouches[0].screenX, {passive: true});
-        input.addEventListener('touchend', (e) => {
-            const dist = e.changedTouches[0].screenX - touchStartX;
-            if (dist > 30) acceptGhostText(input, ghost); 
-        }, {passive: true});
-
-        wrapper.appendChild(ghost);
-        wrapper.appendChild(input);
-        container.appendChild(wrapper);
-    });
-}
-
-function addReferenceRow() {
-    if (refSearchRows.length < 20) {
-        refSearchRows.push("");
-        renderRefInputs();
-    }
-}
-
-function confirmClearRefs() {
-    showConfirmation("Clear all reference inputs?", () => {
-        refSearchRows = ["", "", "", "", ""]; 
-        renderRefInputs();
-    });
-}
-
-function expandAbbreviations(inputEl) {
-    const val = inputEl.value.toLowerCase();
-    // Normalize to handle spaces
-    let key = val.trim();
-    
-    // Check if key exists in mapping
-    if (ABBREVIATIONS[key]) {
-        inputEl.value = ABBREVIATIONS[key] + " "; 
-    }
-}
-
-function handleGhostText(inputEl, ghostEl) {
-    const val = inputEl.value;
-    ghostEl.innerText = ""; 
-    
-    if (val.length < 2) return; 
-
-    const match = allBookNames.find(book => book.toLowerCase().startsWith(val.toLowerCase()));
-    
-    if (match) {
-        ghostEl.innerText = match;
-    }
-}
-
-function acceptGhostText(inputEl, ghostEl) {
-    if (ghostEl.innerText && ghostEl.innerText.length > inputEl.value.length) {
-        inputEl.value = ghostEl.innerText + " "; 
-        ghostEl.innerText = "";
-        refSearchRows[refSearchRows.indexOf(inputEl.value.trim())] = inputEl.value; 
-        inputEl.dispatchEvent(new Event('input'));
-    }
-}
-
-function performMultiRefSearch() {
-    document.getElementById('ref-modal').classList.add('hidden');
-    isViewingBookmarks = false;
-    
-    const resultsArea = document.getElementById('results-area');
-    resultsArea.innerHTML = '';
-    
-    currentSearchResults = [];
-    
-    // STRICT REGEX: Only Matches "Book Chapter:Verse" or Ranges.
-    // Explicitly ignores partial chapter matches unless user only typed "Book Chapter"
-    const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
-    const singleVerseRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)$/;
-
-    refSearchRows.forEach(query => {
-        if (!query.trim()) return;
-        const q = query.trim();
-        
-        let batchResults = [];
-
-        const rangeMatch = q.match(rangeRegex);
-        const singleMatch = q.match(singleVerseRegex);
-
-        if (rangeMatch) {
-            const bookName = rangeMatch[1].trim().toLowerCase();
-            const chapterNum = rangeMatch[2];
-            const startVerse = parseInt(rangeMatch[3]);
-            const endVerse = parseInt(rangeMatch[4]);
-            
-            batchResults = allVerses.filter(v => {
-                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
-                    const parts = v.ref.split(':');
-                    if (parts.length > 1) {
-                        const vNum = parseInt(parts[1]);
-                        return vNum >= startVerse && vNum <= endVerse;
-                    }
-                }
-                return false;
-            });
-        } 
-        else if (singleMatch) {
-            // STRICT MATCH: "2:1" should NOT match "2:10"
-            const bookName = singleMatch[1].trim().toLowerCase();
-            const chapterNum = singleMatch[2];
-            const verseNum = parseInt(singleMatch[3]);
-
-            batchResults = allVerses.filter(v => {
-                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
-                    const parts = v.ref.split(':');
-                    // Check exact number match
-                    return parseInt(parts[1]) === verseNum;
-                }
-                return false;
-            });
-        }
-        else {
-            // Fallback for just "1 Nephi 3" -> show whole chapter
-            batchResults = allVerses.filter(v => v.ref.toLowerCase().startsWith(q.toLowerCase()));
-        }
-        
-        currentSearchResults = [...currentSearchResults, ...batchResults];
-    });
-
-    // Remove duplicates
-    const uniqueIds = new Set();
-    currentSearchResults = currentSearchResults.filter(v => {
-        if (uniqueIds.has(v.ref)) return false;
-        uniqueIds.add(v.ref);
-        return true;
-    });
-
-    if (currentSearchResults.length === 0) {
-        resultsArea.innerHTML = '<div class="placeholder-msg full-width-header">No matches found.</div>';
-    } else {
-        renderedCount = 0;
-        renderNextBatch(""); 
-    }
-}
-
-// --- 5. SEARCH & RESULTS ---
+// --- 6. SEARCH ---
 
 function performSearch(query) {
     if (isViewingBookmarks) {
@@ -511,7 +617,6 @@ function performSearch(query) {
     resultsArea.innerHTML = '';
     const q = query.toLowerCase().trim();
     
-    // Apply strict matching logic to main search too if it looks like a ref
     const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
     const singleVerseRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)$/;
     
@@ -668,7 +773,7 @@ function renderNextBatch(highlightQuery) {
     }
 }
 
-// --- 6. BOOKMARKS ---
+// --- 7. BOOKMARKS ---
 
 function toggleBookmarkView() {
     const filters = document.getElementById('category-filters');
@@ -769,14 +874,21 @@ function showConfirmation(msg, confirmCallback, cancelCallback = null) {
     }
 }
 
-// --- 7. MODALS & NAV ---
+// --- 8. MODALS & NAV ---
 
 function openPopup(title, text) {
     const modalOverlay = document.getElementById('modal-overlay');
-    const modalRef = modalOverlay.querySelector('.modal-ref');
-    const modalText = modalOverlay.querySelector('.modal-body');
+    const modalRef = modalOverlay.querySelector('.modal-ref'); 
+    const modalText = modalOverlay.querySelector('.modal-body'); 
     const modalContent = modalOverlay.querySelector('.modal-content');
-    const modalFooter = modalOverlay.querySelector('.modal-footer') || createModalFooter();
+    
+    // Check if footer exists in this scope, if not create
+    let modalFooter = modalOverlay.querySelector('.modal-footer');
+    if (!modalFooter) {
+        modalFooter = document.createElement('div');
+        modalFooter.className = 'modal-footer';
+        modalContent.appendChild(modalFooter);
+    }
     
     viewMode = 'verse';
     modalContent.classList.add('short');
@@ -798,8 +910,6 @@ function openVerseView(verse, index) {
     const modalRef = modalOverlay.querySelector('.modal-ref');
     const modalText = modalOverlay.querySelector('.modal-body');
     const modalContent = modalOverlay.querySelector('.modal-content');
-    
-    // FIXED: Ensure we target the MAIN modal footer
     let modalFooter = modalOverlay.querySelector('.modal-footer');
     if (!modalFooter) {
         modalFooter = document.createElement('div');
@@ -844,7 +954,7 @@ function viewChapter(chapterId, highlightRef = null) {
     currentChapterIndex = chapterList.indexOf(chapterId); 
     if (currentChapterIndex === -1) return;
     
-    const modalContent = document.querySelector('#modal-overlay .modal-content');
+    const modalContent = document.querySelector('#modal-overlay .modal-content'); 
     modalContent.classList.remove('short'); 
     
     loadChapterContent(chapterId, highlightRef);
@@ -854,10 +964,10 @@ function viewChapter(chapterId, highlightRef = null) {
 
 function loadChapterContent(chapterId, highlightRef = null) {
     const modalOverlay = document.getElementById('modal-overlay');
-    const modalRef = modalOverlay.querySelector('.modal-ref');
-    const modalText = modalOverlay.querySelector('.modal-body');
-    const prevBtn = modalOverlay.querySelector('#prev-chapter-btn');
-    const nextBtn = modalOverlay.querySelector('#next-chapter-btn');
+    const modalRef = modalOverlay.querySelector('.modal-ref'); 
+    const modalText = modalOverlay.querySelector('.modal-body'); 
+    const prevBtn = modalOverlay.querySelector('#prev-chapter-btn'); 
+    const nextBtn = modalOverlay.querySelector('#next-chapter-btn'); 
     
     const chapterVerses = allVerses.filter(v => v.chapterId === chapterId);
     
@@ -873,7 +983,8 @@ function loadChapterContent(chapterId, highlightRef = null) {
     modalRef.innerText = chapterId; 
     modalText.innerHTML = fullText; 
 
-    const headerRight = modalOverlay.querySelector('.header-right');
+    // Inject Desktop Select Button
+    const headerRight = modalOverlay.querySelector('.header-right'); 
     const existingSelBtn = headerRight.querySelector('.desktop-select-btn-injected');
     if (existingSelBtn) existingSelBtn.remove();
 
