@@ -119,7 +119,7 @@ function createModalFooter() {
     return f;
 }
 
-// --- 2. MULTI-SELECT LOGIC (Must be defined before initUI) ---
+// --- 2. MULTI-SELECT LOGIC ---
 
 function enterSelectionMode() {
     isSelectionMode = true;
@@ -601,7 +601,7 @@ function parseBookText(fullText, config, wordSet, chapterSet) {
     });
 }
 
-// --- 6. SEARCH ---
+// --- 6. SEARCH (TEXT ONLY) ---
 
 function performSearch(query) {
     if (isViewingBookmarks) {
@@ -611,53 +611,20 @@ function performSearch(query) {
 
     const resultsArea = document.getElementById('results-area');
     const input = document.getElementById('search-input');
-    input.placeholder = "Search scriptures...";
+    input.placeholder = "Search text...";
 
     if (!query) return;
     resultsArea.innerHTML = '';
     const q = query.toLowerCase().trim();
     
-    const rangeRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)-(\d+)$/;
-    const singleVerseRegex = /^((?:[1-4]\s)?[A-Za-z\s]+)(\d+):(\d+)$/;
-    
-    const rangeMatch = query.match(rangeRegex);
-    const singleMatch = query.match(singleVerseRegex);
-
-    if (rangeMatch || singleMatch) {
-        currentSearchResults = allVerses.filter(v => {
-            if (!activeCategories.has(v.source)) return false;
-            
-            if (rangeMatch) {
-                const bookName = rangeMatch[1].trim().toLowerCase();
-                const chapterNum = rangeMatch[2];
-                const startVerse = parseInt(rangeMatch[3]);
-                const endVerse = parseInt(rangeMatch[4]);
-                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
-                    const vNum = parseInt(v.ref.split(':')[1]);
-                    return vNum >= startVerse && vNum <= endVerse;
-                }
-            } else if (singleMatch) {
-                const bookName = singleMatch[1].trim().toLowerCase();
-                const chapterNum = singleMatch[2];
-                const verseNum = parseInt(singleMatch[3]);
-                if (v.ref.toLowerCase().startsWith(`${bookName} ${chapterNum}:`)) {
-                    return parseInt(v.ref.split(':')[1]) === verseNum;
-                }
-            }
-            return false;
-        });
-    } else {
-        let refMatches = [];
-        let textMatches = [];
-        allVerses.forEach(v => {
-            if (!activeCategories.has(v.source)) return;
-            const matchRef = v.ref.toLowerCase().includes(q);
-            const matchText = v.text.toLowerCase().includes(q);
-            if (matchRef) refMatches.push(v);
-            else if (matchText) textMatches.push(v);
-        });
-        currentSearchResults = [...refMatches, ...textMatches];
-    }
+    let textMatches = [];
+    allVerses.forEach(v => {
+        if (!activeCategories.has(v.source)) return;
+        if (v.text.toLowerCase().includes(q)) {
+            textMatches.push(v);
+        }
+    });
+    currentSearchResults = textMatches;
 
     if (currentSearchResults.length === 0) { resultsArea.innerHTML = '<div class="placeholder-msg full-width-header">No matches found.</div>'; return; }
 
@@ -742,7 +709,6 @@ function renderNextBatch(highlightQuery) {
 
         if (!isViewingBookmarks && highlightQuery) {
             snippet = verse.text.replace(new RegExp(`(${highlightQuery})`, 'gi'), '<b style="color:var(--primary);">$1</b>');
-            refDisplay = verse.ref.replace(new RegExp(`(${highlightQuery})`, 'gi'), '<span style="background:rgba(37,99,235,0.1); color:var(--primary);">$1</span>');
         }
 
         const sourceBadge = BOOKS_CONFIG.find(b => b.id === verse.source).name;
@@ -773,7 +739,7 @@ function renderNextBatch(highlightQuery) {
     }
 }
 
-// --- 7. BOOKMARKS ---
+// --- 7. BOOKMARKS & DELETE ---
 
 function toggleBookmarkView() {
     const filters = document.getElementById('category-filters');
@@ -882,7 +848,6 @@ function openPopup(title, text) {
     const modalText = modalOverlay.querySelector('.modal-body'); 
     const modalContent = modalOverlay.querySelector('.modal-content');
     
-    // Check if footer exists in this scope, if not create
     let modalFooter = modalOverlay.querySelector('.modal-footer');
     if (!modalFooter) {
         modalFooter = document.createElement('div');
