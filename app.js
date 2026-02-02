@@ -23,6 +23,7 @@ const BOOKS_CONFIG = [
 ];
 
 const ABBREVIATIONS = {
+    // --- YOUR ORIGINAL LIST ---
     "d&c": "Doctrine and Covenants",
     "d & c": "Doctrine and Covenants",
     "doctrine & covenants": "Doctrine and Covenants",
@@ -33,7 +34,104 @@ const ABBREVIATIONS = {
     "a of f": "Articles of Faith",
     "js-h": "Joseph Smith—History",
     "js-m": "Joseph Smith—Matthew",
-    "w of m": "Words of Mormon"
+    "w of m": "Words of Mormon",
+
+    // --- NO-SPACE VARIATIONS (Requested) ---
+    "1ne": "1 Nephi",
+    "2ne": "2 Nephi",
+    "3ne": "3 Nephi",
+    "4ne": "4 Nephi",
+    "jsh": "Joseph Smith—History",
+    "jsm": "Joseph Smith—Matthew",
+    "wofm": "Words of Mormon",
+    "aoff": "Articles of Faith",
+
+    // --- NEW TESTAMENT ---
+    "matt": "Matthew",
+    "mark": "Mark",
+    "luke": "Luke",
+    "john": "John",
+    "acts": "Acts",
+    "rom": "Romans",
+    "1 cor": "1 Corinthians",
+    "1cor": "1 Corinthians",
+    "2 cor": "2 Corinthians",
+    "2cor": "2 Corinthians",
+    "gal": "Galatians",
+    "eph": "Ephesians",
+    "phil": "Philippians",
+    "col": "Colossians",
+    "1 thes": "1 Thessalonians",
+    "1thes": "1 Thessalonians",
+    "2 thes": "2 Thessalonians",
+    "2thes": "2 Thessalonians",
+    "1 tim": "1 Timothy",
+    "1tim": "1 Timothy",
+    "2 tim": "2 Timothy",
+    "2tim": "2 Timothy",
+    "tit": "Titus",
+    "philem": "Philemon",
+    "heb": "Hebrews",
+    "james": "James",
+    "1 pet": "1 Peter",
+    "1pet": "1 Peter",
+    "2 pet": "2 Peter",
+    "2pet": "2 Peter",
+    "1 jn": "1 John",
+    "1jn": "1 John",
+    "2 jn": "2 John",
+    "2jn": "2 John",
+    "3 jn": "3 John",
+    "3jn": "3 John",
+    "jude": "Jude",
+    "rev": "Revelation",
+
+    // --- OLD TESTAMENT ---
+    "gen": "Genesis",
+    "ex": "Exodus",
+    "lev": "Leviticus",
+    "num": "Numbers",
+    "deut": "Deuteronomy",
+    "josh": "Joshua",
+    "judg": "Judges",
+    "ruth": "Ruth",
+    "1 sam": "1 Samuel",
+    "1sam": "1 Samuel",
+    "2 sam": "2 Samuel",
+    "2sam": "2 Samuel",
+    "1 kings": "1 Kings",
+    "1kings": "1 Kings",
+    "2 kings": "2 Kings",
+    "2kings": "2 Kings",
+    "1 chron": "1 Chronicles",
+    "1chron": "1 Chronicles",
+    "2 chron": "2 Chronicles",
+    "2chron": "2 Chronicles",
+    "ezra": "Ezra",
+    "neh": "Nehemiah",
+    "esth": "Esther",
+    "job": "Job",
+    "ps": "Psalms",
+    "prov": "Proverbs",
+    "eccl": "Ecclesiastes",
+    "song": "Song of Solomon",
+    "isa": "Isaiah",
+    "jer": "Jeremiah",
+    "lam": "Lamentations",
+    "ezek": "Ezekiel",
+    "dan": "Daniel",
+    "hos": "Hosea",
+    "joel": "Joel",
+    "amos": "Amos",
+    "obad": "Obadiah",
+    "jonah": "Jonah",
+    "mic": "Micah",
+    "nah": "Nahum",
+    "hab": "Habakkuk",
+    "zeph": "Zechariah",
+    "hag": "Haggai",
+    "zech": "Zechariah",
+    "mal": "Malachi"
 };
 
 // Global State
@@ -502,22 +600,27 @@ function initUI() {
     if(clearRefBtn) clearRefBtn.onclick = confirmClearRefs;
     if(searchRefBtn) searchRefBtn.onclick = performMultiRefSearch;
 
-    const modalContent = document.querySelector('.modal-content');
+    const modalContent = document.querySelector('.modal-content'); // This matches first found (Ref Modal)
+    
+    // --- FIX: Targeting the Main Verse Modal for swipe ---
+    const readingModalContent = document.querySelector('#modal-overlay .modal-content');
     let touchStartX = 0;
     let touchStartY = 0;
     
-    if(modalContent) {
-        modalContent.addEventListener('touchstart', (e) => {
+    if(readingModalContent) {
+        readingModalContent.addEventListener('touchstart', (e) => {
             touchStartX = e.changedTouches[0].screenX;
             touchStartY = e.changedTouches[0].screenY;
         }, {passive: true});
         
-        modalContent.addEventListener('touchend', (e) => {
+        readingModalContent.addEventListener('touchend', (e) => {
             const dist = touchStartX - e.changedTouches[0].screenX;
             const distY = touchStartY - e.changedTouches[0].screenY;
             
+            // Vertical lock check
             if (Math.abs(distY) > Math.abs(dist) * 1.5) return;
 
+            // Swipe Left (Next) / Swipe Right (Prev)
             if (dist > 40) handleNavigation(1); 
             else if (dist < -40) handleNavigation(-1);
         }, {passive: true});
